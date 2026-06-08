@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BLOX FORCES — Wave Survival FPS</title>
+<style>
+  :root {
+    --ink: #f2f6fb;
+    --dim: #9fb0c4;
+    --accent: #4ade80;
+    --warn: #fbbf24;
+    --danger: #ef4444;
+    --bg: #0a0c10;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; color: var(--ink);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; user-select: none; }
+  #app { position: absolute; inset: 0; }
+  canvas { display: block; }
+
+  /* ---------- Start overlay ---------- */
+  #start {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(10,12,16,0.82) 0%, rgba(0,0,0,0.97) 100%);
+    z-index: 30; cursor: pointer; transition: opacity 0.35s ease;
+  }
+  #start.hidden { opacity: 0; pointer-events: none; }
+  .card {
+    text-align: center; padding: 38px 54px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(15,18,24,0.72); backdrop-filter: blur(6px);
+    border-radius: 6px; max-width: 580px;
+  }
+  .card .eyebrow { font-size: 11px; letter-spacing: 0.28em; color: var(--accent);
+    text-transform: uppercase; margin-bottom: 14px; }
+  .card h1 { font-weight: 700; font-size: 34px; letter-spacing: 0.06em; margin-bottom: 6px;
+    color: #fff; text-shadow: 0 2px 0 #1d6b3a; }
+  .card .sub { color: var(--dim); font-size: 13px; margin-bottom: 26px; }
+  .card .cta {
+    display: inline-block; padding: 12px 26px; border: 1px solid var(--accent); color: #06210f;
+    background: var(--accent); font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase;
+    border-radius: 4px; font-weight: 700;
+  }
+  .card .controls {
+    margin-top: 28px; display: grid; grid-template-columns: auto 1fr; gap: 7px 18px;
+    text-align: left; font-size: 12px; color: var(--dim);
+  }
+  kbd {
+    font-family: inherit; border: 1px solid rgba(255,255,255,0.2);
+    padding: 1px 7px; border-radius: 3px; color: var(--ink);
+    font-size: 11px; background: rgba(255,255,255,0.05);
+  }
+
+  /* ---------- Game over ---------- */
+  #over {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(40,8,8,0.82) 0%, rgba(0,0,0,0.97) 100%);
+    z-index: 30; cursor: pointer;
+  }
+  #over.show { display: flex; }
+  #over h1 { font-size: 38px; color: var(--danger); letter-spacing: 0.08em; text-shadow: 0 2px 0 #5c0f0f; }
+  #over .stats { margin: 18px 0 26px; color: var(--ink); font-size: 15px; line-height: 1.8; }
+  #over .stats b { color: var(--accent); }
+
+  /* ---------- HUD ---------- */
+  #hud { position: absolute; inset: 0; z-index: 10; pointer-events: none; display: none; }
+  #hud.on { display: block; }
+
+  /* Health bottom-left */
+  #healthWrap { position: absolute; left: 22px; bottom: 22px; width: 240px; }
+  #healthLabel { font-size: 10px; letter-spacing: 0.18em; color: var(--dim); text-transform: uppercase; margin-bottom: 5px; }
+  #healthBar { height: 16px; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.18); border-radius: 3px; overflow: hidden; }
+  #healthFill { height: 100%; width: 100%; background: linear-gradient(90deg,#22c55e,#4ade80); transition: width 0.12s linear, background 0.2s; }
+  #healthNum { font-size: 12px; color: var(--ink); margin-top: 3px; }
+
+  /* Ammo bottom-right */
+  #ammoWrap { position: absolute; right: 26px; bottom: 22px; text-align: right; }
+  #weaponName { font-size: 12px; letter-spacing: 0.16em; color: var(--accent); text-transform: uppercase; }
+  #ammoCount { font-size: 40px; font-weight: 700; line-height: 1; color: #fff; }
+  #ammoCount .reserve { font-size: 18px; color: var(--dim); font-weight: 400; }
+  #reloadTag { font-size: 11px; color: var(--warn); letter-spacing: 0.16em; height: 14px; }
+
+  /* Top-center score / wave */
+  #topbar { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #wave { font-size: 13px; letter-spacing: 0.22em; color: var(--warn); text-transform: uppercase; }
+  #score { font-size: 26px; font-weight: 700; color: #fff; }
+  #enemiesLeft { font-size: 11px; color: var(--dim); letter-spacing: 0.12em; }
+
+  /* Wave banner */
+  #banner { position: absolute; top: 38%; left: 50%; transform: translate(-50%,-50%);
+    font-size: 44px; font-weight: 700; letter-spacing: 0.1em; color: #fff;
+    text-shadow: 0 3px 0 #1d6b3a, 0 0 24px rgba(74,222,128,0.4); opacity: 0; transition: opacity 0.4s; text-align: center; }
+  #banner.show { opacity: 1; }
+  #banner .small { display: block; font-size: 15px; color: var(--accent); letter-spacing: 0.2em; margin-top: 6px; }
+
+  /* Crosshair */
+  #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: 22px; height: 22px; opacity: 0.9; }
+  #crosshair span { position: absolute; background: #eafff2; box-shadow: 0 0 2px rgba(0,0,0,0.8); }
+  #crosshair .v { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #crosshair .h { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+  #crosshair .dot { left: 50%; top: 50%; width: 3px; height: 3px; background: var(--accent);
+    transform: translate(-50%,-50%); border-radius: 50%; }
+  /* Hitmarker */
+  #hitmarker { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%) rotate(45deg);
+    width: 18px; height: 18px; opacity: 0; }
+  #hitmarker span { position: absolute; background: #fff; }
+  #hitmarker .v { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #hitmarker .h { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+  #hitmarker.kill span { background: var(--danger); }
+
+  /* Damage vignette */
+  #hurt { position: absolute; inset: 0; pointer-events: none;
+    box-shadow: inset 0 0 180px 30px rgba(220,30,30,0.0); transition: box-shadow 0.1s; }
+
+  /* Killfeed */
+  #killfeed { position: absolute; right: 22px; top: 70px; text-align: right; font-size: 12px; }
+  #killfeed div { color: var(--ink); opacity: 0.9; margin: 2px 0; }
+  #killfeed b { color: var(--danger); }
+
+  /* Help */
+  #help { position: absolute; right: 16px; bottom: 90px; font-size: 11px;
+    background: rgba(10,12,16,0.8); border: 1px solid rgba(255,255,255,0.12);
+    padding: 12px 16px; border-radius: 4px; display: none; }
+  #help.show { display: block; }
+  #help h2 { font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+  #help .line { display: grid; grid-template-columns: 86px 1fr; gap: 8px; margin: 3px 0; color: var(--dim); }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="topbar">
+    <div id="wave">WAVE 1</div>
+    <div id="score">0</div>
+    <div id="enemiesLeft">0 hostiles</div>
+  </div>
+
+  <div id="crosshair"><span class="v"></span><span class="h"></span><span class="dot"></span></div>
+  <div id="hitmarker"><span class="v"></span><span class="h"></span></div>
+  <div id="hurt"></div>
+  <div id="killfeed"></div>
+  <div id="banner"></div>
+
+  <div id="healthWrap">
+    <div id="healthLabel">Health</div>
+    <div id="healthBar"><div id="healthFill"></div></div>
+    <div id="healthNum">100</div>
+  </div>
+
+  <div id="ammoWrap">
+    <div id="weaponName">AK-BLOX</div>
+    <div id="ammoCount"><span id="mag">30</span><span class="reserve"> / <span id="reserve">120</span></span></div>
+    <div id="reloadTag"></div>
+  </div>
+
+  <div id="help">
+    <h2>Controls</h2>
+    <div class="line"><kbd>W A S D</kbd><span>Move</span></div>
+    <div class="line"><kbd>Shift</kbd><span>Sprint</span></div>
+    <div class="line"><kbd>Space</kbd><span>Jump</span></div>
+    <div class="line"><kbd>Mouse</kbd><span>Look</span></div>
+    <div class="line"><kbd>Click</kbd><span>Fire</span></div>
+    <div class="line"><kbd>R</kbd><span>Reload</span></div>
+    <div class="line"><kbd>1 / 2</kbd><span>Rifle / Pistol</span></div>
+    <div class="line"><kbd>H</kbd><span>Toggle help</span></div>
+    <div class="line"><kbd>Esc</kbd><span>Release cursor</span></div>
+  </div>
+</div>
+
+<!-- Start overlay -->
+<div id="start">
+  <div class="card">
+    <div class="eyebrow">Roblox-style · Wave Survival</div>
+    <h1>BLOX&nbsp;FORCES</h1>
+    <div class="sub">Hold the arena against waves of blocky hostiles. Aim for the head.</div>
+    <div class="cta">Click to deploy</div>
+    <div class="controls">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move &nbsp;·&nbsp; <kbd>Shift</kbd> Sprint &nbsp;·&nbsp; <kbd>Space</kbd> Jump</span>
+      <span><kbd>Mouse</kbd></span><span>Look (or click + drag) &nbsp;·&nbsp; <kbd>Click</kbd> Fire</span>
+      <span><kbd>R</kbd></span><span>Reload &nbsp;·&nbsp; <kbd>1</kbd> Rifle &nbsp;·&nbsp; <kbd>2</kbd> Pistol</span>
+      <span><kbd>H</kbd></span><span>Help &nbsp;·&nbsp; <kbd>Esc</kbd> Release cursor</span>
+    </div>
+  </div>
+</div>
+
+<!-- Game over -->
+<div id="over">
+  <div class="card">
+    <div class="eyebrow" style="color:var(--danger)">You were overrun</div>
+    <h1>GAME OVER</h1>
+    <div class="stats" id="overStats"></div>
+    <div class="cta" style="background:var(--accent)">Click to redeploy</div>
+  </div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script>
+/* ============================================================================
+ * BLOX FORCES — a Roblox / Phantom-Forces inspired wave-survival FPS.
+ * Built on Three.js r128. Everything is procedural primitives (no assets).
+ * ========================================================================== */
+(() => {
+  "use strict";
+  const T = THREE;
+
+  // ---------------------------------------------------------------------------
+  // Renderer / scene / camera
+  // ---------------------------------------------------------------------------
+  const app = document.getElementById('app');
+  const renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = T.PCFSoftShadowMap;
+  renderer.outputEncoding = T.sRGBEncoding;
+  renderer.toneMapping = T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  app.appendChild(renderer.domElement);
+
+  const scene = new T.Scene();
+  scene.background = new T.Color(0x8fd0ff);   // bright Roblox sky
+  scene.fog = new T.Fog(0x9bd6ff, 55, 130);
+
+  const camera = new T.PerspectiveCamera(78, window.innerWidth / window.innerHeight, 0.05, 400);
+  scene.add(camera); // so the weapon viewmodel (a child of the camera) renders
+
+  // ---------------------------------------------------------------------------
+  // Lighting
+  // ---------------------------------------------------------------------------
+  scene.add(new T.HemisphereLight(0xeaf4ff, 0x3a5a32, 0.9));
+  scene.add(new T.AmbientLight(0xffffff, 0.25));
+  const sun = new T.DirectionalLight(0xfff6e0, 1.0);
+  sun.position.set(-40, 70, 30);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  const sc = sun.shadow.camera;
+  sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 200;
+  sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
+  scene.add(sun);
+  scene.add(sun.target);
+
+  // ---------------------------------------------------------------------------
+  // World constants & collision registry
+  // ---------------------------------------------------------------------------
+  const ARENA = 60;            // full width/depth (X,Z in [-30,30])
+  const HALF = ARENA / 2;
+  const WALL_H = 7;
+  const EYE_H = 2.3;           // camera offset above feet
+  const PLAYER_R = 0.6;
+  const WALK = 8, SPRINT = 13;
+  const GRAVITY = 26, JUMP_V = 9;
+
+  // Solid axis-aligned boxes in XZ, each with a top height (for jump-on + sliding).
+  // { minX, maxX, minZ, maxZ, top, bottom }
+  const obstacles = [];
+  // Meshes that bullets cannot pass through (walls, crates).
+  const worldSolids = [];
+
+  function registerObstacle(cx, cz, w, d, top, bottom) {
+    obstacles.push({ minX: cx - w/2, maxX: cx + w/2, minZ: cz - d/2, maxZ: cz + d/2, top, bottom: bottom || 0 });
+  }
+
+  // Build a chunky box, optionally registering it as collidable / bullet-solid.
+  function block(x, y, z, w, h, d, color, opts = {}) {
+    const mat = new T.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.85, metalness: opts.metal ?? 0.0 });
+    const mesh = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = opts.cast ?? true;
+    mesh.receiveShadow = opts.receive ?? true;
+    scene.add(mesh);
+    if (opts.collide ?? true) registerObstacle(x, z, w, d, y + h/2, y - h/2);
+    if (opts.solid ?? true) worldSolids.push(mesh);
+    return mesh;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Arena: baseplate, walls, blocky cover
+  // ---------------------------------------------------------------------------
+  function buildArena() {
+    // Baseplate (classic Roblox green), studs hinted by a faint grid overlay.
+    const ground = new T.Mesh(
+      new T.PlaneGeometry(ARENA, ARENA),
+      new T.MeshStandardMaterial({ color: 0x5fa345, roughness: 0.95 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Grid lines for a studs-like feel.
+    const grid = new T.GridHelper(ARENA, ARENA / 4, 0x3c7a2c, 0x4c8f38);
+    grid.position.y = 0.02;
+    grid.material.opacity = 0.45; grid.material.transparent = true;
+    scene.add(grid);
+
+    // Perimeter walls (light concrete grey).
+    const wc = 0xc6ccd2;
+    block(0,  WALL_H/2, -HALF, ARENA, WALL_H, 1.2, wc, { rough: 0.9 });
+    block(0,  WALL_H/2,  HALF, ARENA, WALL_H, 1.2, wc, { rough: 0.9 });
+    block(-HALF, WALL_H/2, 0, 1.2, WALL_H, ARENA, wc, { rough: 0.9 });
+    block( HALF, WALL_H/2, 0, 1.2, WALL_H, ARENA, wc, { rough: 0.9 });
+
+    // Cover: a spread of bright crates, walls and ramps.
+    const crate = 0xb5813a, crate2 = 0x9a6c30;
+    const palette = [0xef4444, 0x3b82f6, 0xfacc15, 0x22c55e, 0xa855f7, 0xf97316];
+
+    // Central low bunker
+    block(0, 1.5, 0, 8, 3, 2, wc, { rough: 0.85 });
+    block(0, 1.5, 6, 2, 3, 8, wc, { rough: 0.85 });
+
+    // Crate stacks (some you can jump on)
+    const stacks = [
+      [-14, -12], [12, -14], [16, 10], [-12, 14], [-20, 2], [20, -4],
+      [-6, -18], [8, 18], [-18, -16], [22, 18], [-22, 18], [4, -8]
+    ];
+    stacks.forEach(([x, z], i) => {
+      const c = (i % 3 === 0) ? crate2 : crate;
+      block(x, 1.25, z, 2.5, 2.5, 2.5, c, { rough: 0.9 });
+      if (i % 2 === 0) block(x + 0.1, 3.5, z + 0.1, 2.2, 2.2, 2.2, c, { rough: 0.9 });
+      if (i % 4 === 0) block(x, 1.0, z + 2.6, 2.5, 2, 2.5, palette[i % palette.length], { rough: 0.7 });
+    });
+
+    // A couple of bright platforms to fight on top of
+    block(-10, 0.6, 0, 6, 1.2, 6, palette[1], { rough: 0.7 });
+    block(10, 0.6, 4, 6, 1.2, 6, palette[3], { rough: 0.7 });
+    block(0, 0.4, -16, 10, 0.8, 4, palette[2], { rough: 0.7 });
+
+    // Decorative tall pillars
+    [[-26, -26], [26, -26], [-26, 26], [26, 26]].forEach(([x, z]) =>
+      block(x, 3, z, 2, 6, 2, 0xb0b6bc, { rough: 0.9 }));
+  }
+  buildArena();
+
+  // ---------------------------------------------------------------------------
+  // Collision helpers (player & enemies share these)
+  // ---------------------------------------------------------------------------
+  // Penetration of a circle at (px,pz,feetY) into solid obstacles. A box only
+  // counts as solid if its top is meaningfully above the feet (so you slide
+  // along the sides of things taller than you, but walk freely across tops).
+  function maxPenetration(px, pz, feetY, radius) {
+    let worst = 0;
+    for (const o of obstacles) {
+      if (o.top <= feetY + 0.45) continue;       // standable / below feet → not a wall here
+      if (feetY + 0.1 >= o.top) continue;
+      const cx = Math.max(o.minX, Math.min(px, o.maxX));
+      const cz = Math.max(o.minZ, Math.min(pz, o.maxZ));
+      const dx = px - cx, dz = pz - cz;
+      const pen = radius - Math.hypot(dx, dz);
+      if (pen > worst) worst = pen;
+    }
+    return worst;
+  }
+
+  // Highest surface you can stand on at (x,z), given you're falling onto it.
+  function groundHeight(px, pz, feetY) {
+    let h = 0;
+    for (const o of obstacles) {
+      if (px < o.minX || px > o.maxX || pz < o.minZ || pz > o.maxZ) continue;
+      if (o.top <= feetY + 0.45 && o.top > h) h = o.top;
+    }
+    return h;
+  }
+
+  function clampToArena(p, r) {
+    const lim = HALF - 0.8 - r;
+    p.x = Math.max(-lim, Math.min(lim, p.x));
+    p.z = Math.max(-lim, Math.min(lim, p.z));
+  }
+
+  // Move a circle along one axis with penetration-aware sliding (never gets stuck).
+  function tryMove(pos, dx, dz, feetY, r) {
+    const curPen = maxPenetration(pos.x, pos.z, feetY, r);
+    if (dx !== 0) {
+      const nx = pos.x + dx;
+      const pen = maxPenetration(nx, pos.z, feetY, r);
+      if (pen <= 0 || pen < curPen) pos.x = nx;
+    }
+    if (dz !== 0) {
+      const nz = pos.z + dz;
+      const pen = maxPenetration(pos.x, nz, feetY, r);
+      if (pen <= 0 || pen < curPen) pos.z = nz;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tiny procedural sound (WebAudio, no assets)
+  // ---------------------------------------------------------------------------
+  let actx = null;
+  function audio() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return actx; }
+  function blip(type) {
+    const ac = audio(); if (!ac) return;
+    const t = ac.currentTime;
+    if (type === 'shot' || type === 'pistol') {
+      const buf = ac.createBuffer(1, 1024, ac.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+      const src = ac.createBufferSource(); src.buffer = buf;
+      const g = ac.createGain(); g.gain.setValueAtTime(type === 'pistol' ? 0.3 : 0.22, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = type === 'pistol' ? 1400 : 2200;
+      src.connect(f); f.connect(g); g.connect(ac.destination); src.start(t); src.stop(t + 0.14);
+    } else {
+      const osc = ac.createOscillator(); const g = ac.createGain();
+      if (type === 'hit') { osc.frequency.setValueAtTime(880, t); g.gain.setValueAtTime(0.12, t); }
+      else if (type === 'kill') { osc.frequency.setValueAtTime(440, t); osc.frequency.exponentialRampToValueAtTime(880, t + 0.12); g.gain.setValueAtTime(0.16, t); }
+      else if (type === 'hurt') { osc.type = 'square'; osc.frequency.setValueAtTime(160, t); g.gain.setValueAtTime(0.18, t); }
+      else if (type === 'reload') { osc.frequency.setValueAtTime(300, t); g.gain.setValueAtTime(0.1, t); }
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(g); g.connect(ac.destination); osc.start(t); osc.stop(t + 0.2);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Weapon viewmodels (children of the camera) + config
+  // ---------------------------------------------------------------------------
+  const WEAPONS = {
+    rifle:  { name: 'AK-BLOX', auto: true,  fireDelay: 0.095, magSize: 30, reserve: 150, ammo: 30,
+              damage: 26, headMult: 2.0, spread: 0.018, sprintSpread: 0.05, reloadTime: 1.9, range: 220, kick: 0.013 },
+    pistol: { name: 'M9-BLOX', auto: false, fireDelay: 0.16,  magSize: 12, reserve: 96,  ammo: 12,
+              damage: 36, headMult: 2.2, spread: 0.010, sprintSpread: 0.04, reloadTime: 1.2, range: 140, kick: 0.022 },
+  };
+
+  function buildViewmodel(kind) {
+    const g = new T.Group();
+    const matBody = new T.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.6, metalness: 0.3, fog: false });
+    const matDark = new T.MeshStandardMaterial({ color: 0x16181c, roughness: 0.5, metalness: 0.4, fog: false });
+    const matAccent = new T.MeshStandardMaterial({ color: kind === 'rifle' ? 0xb5813a : 0x3b82f6, roughness: 0.5, fog: false });
+    const mk = (w, h, d, mat, x, y, z) => { const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); g.add(m); return m; };
+
+    if (kind === 'rifle') {
+      mk(0.10, 0.10, 0.95, matBody, 0, 0, -0.45);   // receiver
+      mk(0.08, 0.06, 0.70, matDark, 0, 0.005, -0.85);// barrel
+      mk(0.10, 0.22, 0.12, matAccent, 0, -0.16, -0.12); // mag
+      mk(0.08, 0.16, 0.10, matBody, 0, -0.12, 0.12);  // grip
+      mk(0.05, 0.05, 0.22, matDark, 0, 0.10, -0.30);  // sight rail
+      mk(0.09, 0.07, 0.30, matBody, 0, -0.01, 0.18);  // stock
+    } else {
+      mk(0.09, 0.16, 0.10, matBody, 0, -0.05, 0.05);  // grip
+      mk(0.09, 0.09, 0.45, matBody, 0, 0.06, -0.18);  // slide
+      mk(0.07, 0.05, 0.30, matDark, 0, 0.06, -0.30);  // barrel
+      mk(0.07, 0.04, 0.10, matAccent, 0, 0.12, -0.05);// sight
+    }
+    // Muzzle flash (hidden until fired)
+    const flash = new T.Mesh(
+      new T.PlaneGeometry(0.5, 0.5),
+      new T.MeshBasicMaterial({ color: 0xfff2a0, transparent: true, opacity: 0, fog: false, depthWrite: false, blending: T.AdditiveBlending })
+    );
+    flash.position.set(0, 0.01, kind === 'rifle' ? -1.25 : -0.5);
+    g.add(flash);
+    const flashLight = new T.PointLight(0xffd27a, 0, 8);
+    flashLight.position.copy(flash.position);
+    g.add(flashLight);
+
+    g.position.set(0.28, -0.26, -0.55);
+    g.userData = { flash, flashLight, restPos: g.position.clone(), muzzleZ: flash.position.z };
+    return g;
+  }
+
+  const viewmodels = { rifle: buildViewmodel('rifle'), pistol: buildViewmodel('pistol') };
+  camera.add(viewmodels.rifle); camera.add(viewmodels.pistol);
+  viewmodels.pistol.visible = false;
+
+  // ---------------------------------------------------------------------------
+  // Enemies — blocky Roblox "noob" bots
+  // ---------------------------------------------------------------------------
+  const enemies = [];
+  const enemyHitMeshes = [];   // flattened, for raycasting (userData.enemy, userData.part)
+  const particles = [];        // debris blocks
+  const tracers = [];          // bullet tracer lines
+
+  function makeEnemy(wave) {
+    const grp = new T.Group();
+    const hp = 100 + wave * 18;
+    const speed = Math.min(2.2 + wave * 0.18, 5.5);
+
+    // Enemy state object — created up front so each hit-mesh's userData.enemy
+    // points at THIS object (not the bare group). fire() reads e.alive / e.hp.
+    const e = {
+      grp, hp, maxHp: hp, speed, alive: true, dying: 0,
+      contactCD: 0, walkT: Math.random() * 6, flash: 0,
+      hitMeshes: [], extraMeshes: [],
+    };
+
+    const skin = 0xffd33a;     // classic noob yellow
+    const shirt = [0x3b82f6, 0x22c55e, 0xef4444, 0xa855f7, 0xf97316][Math.floor(Math.random() * 5)];
+    const pants = 0x2f9e44;
+
+    const mat = (c) => new T.MeshStandardMaterial({ color: c, roughness: 0.8 });
+    const part = (w, h, d, c, x, y, z, name) => {
+      const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat(c));
+      m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+      m.userData.enemy = e; m.userData.part = name;
+      grp.add(m); enemyHitMeshes.push(m); e.hitMeshes.push(m);
+      return m;
+    };
+
+    // Body (feet at y=0). legs 1.3, torso 1.5, head 0.9
+    const legL = part(0.45, 1.3, 0.5, pants, -0.32, 0.65, 0, 'body');
+    const legR = part(0.45, 1.3, 0.5, pants,  0.32, 0.65, 0, 'body');
+    const torso = part(1.25, 1.5, 0.65, shirt, 0, 2.05, 0, 'body');
+    const armL = part(0.42, 1.4, 0.46, shirt, -0.86, 2.05, 0, 'body');
+    const armR = part(0.42, 1.4, 0.46, shirt,  0.86, 2.05, 0, 'body');
+    const head = part(0.95, 0.9, 0.95, skin, 0, 3.25, 0, 'head');
+
+    // Simple face
+    const eye = new T.MeshStandardMaterial({ color: 0x111111, roughness: 0.4 });
+    const e1 = new T.Mesh(new T.BoxGeometry(0.13, 0.13, 0.05), eye); e1.position.set(-0.2, 3.32, 0.48); grp.add(e1);
+    const e2 = new T.Mesh(new T.BoxGeometry(0.13, 0.13, 0.05), eye); e2.position.set(0.2, 3.32, 0.48); grp.add(e2);
+    const mouth = new T.Mesh(new T.BoxGeometry(0.4, 0.08, 0.05), eye); mouth.position.set(0, 3.08, 0.48); grp.add(mouth);
+
+    // Spawn at a random edge point clear of cover
+    let sx, sz, tries = 0;
+    do {
+      const edge = Math.floor(Math.random() * 4);
+      const a = (Math.random() - 0.5) * (ARENA - 8);
+      if (edge === 0) { sx = a; sz = -HALF + 3; }
+      else if (edge === 1) { sx = a; sz = HALF - 3; }
+      else if (edge === 2) { sx = -HALF + 3; sz = a; }
+      else { sx = HALF - 3; sz = a; }
+      tries++;
+    } while (maxPenetration(sx, sz, 0, 0.8) > 0 && tries < 20);
+    grp.position.set(sx, 0, sz);
+    scene.add(grp);
+
+    // hitMeshes were collected by part(); record the named refs + face meshes
+    e.legL = legL; e.legR = legR; e.torso = torso; e.armL = armL; e.armR = armR; e.head = head;
+    e.extraMeshes = [e1, e2, mouth];
+    enemies.push(e);
+    return e;
+  }
+
+  function removeEnemy(e) {
+    for (const m of e.hitMeshes) {
+      const i = enemyHitMeshes.indexOf(m); if (i >= 0) enemyHitMeshes.splice(i, 1);
+      m.geometry.dispose();
+    }
+    scene.remove(e.grp);
+    const i = enemies.indexOf(e); if (i >= 0) enemies.splice(i, 1);
+  }
+
+  function spawnDebris(pos, color, n) {
+    for (let i = 0; i < n; i++) {
+      const m = new T.Mesh(new T.BoxGeometry(0.25, 0.25, 0.25),
+        new T.MeshStandardMaterial({ color, roughness: 0.8 }));
+      m.position.copy(pos);
+      m.position.y += 1 + Math.random() * 1.5;
+      m.castShadow = true;
+      scene.add(m);
+      particles.push({ m, v: new T.Vector3((Math.random() - 0.5) * 6, 3 + Math.random() * 5, (Math.random() - 0.5) * 6), life: 1.0 });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Game state
+  // ---------------------------------------------------------------------------
+  const state = {
+    phase: 'menu',     // menu | playing | dead
+    hp: 100, maxHp: 100, lastHurt: -10,
+    score: 0, wave: 0, toSpawn: 0, spawnTimer: 0, waveActive: false, waveDelay: 0,
+    weapon: 'rifle',
+    recoil: 0, recoilV: 0,
+    fireTimer: 0, firingHeld: false,
+    reloading: false, reloadTimer: 0,
+    bob: 0,
+  };
+  // Per-weapon live ammo
+  const ammo = {
+    rifle: { mag: WEAPONS.rifle.magSize, reserve: WEAPONS.rifle.reserve },
+    pistol: { mag: WEAPONS.pistol.magSize, reserve: WEAPONS.pistol.reserve },
+  };
+
+  // Player kinematics
+  let yaw = 0, pitch = 0;
+  const player = { x: 0, z: 18, feetY: 0, vy: 0, grounded: true };
+
+  // ---------------------------------------------------------------------------
+  // HUD references
+  // ---------------------------------------------------------------------------
+  const el = (id) => document.getElementById(id);
+  const ui = {
+    start: el('start'), over: el('over'), overStats: el('overStats'), hud: el('hud'),
+    wave: el('wave'), score: el('score'), enemiesLeft: el('enemiesLeft'),
+    healthFill: el('healthFill'), healthNum: el('healthNum'),
+    weaponName: el('weaponName'), mag: el('mag'), reserve: el('reserve'), reloadTag: el('reloadTag'),
+    hitmarker: el('hitmarker'), hurt: el('hurt'), banner: el('banner'), killfeed: el('killfeed'), help: el('help'),
+  };
+
+  function updateAmmoHUD() {
+    const a = ammo[state.weapon];
+    ui.weaponName.textContent = WEAPONS[state.weapon].name;
+    ui.mag.textContent = a.mag;
+    ui.reserve.textContent = a.reserve;
+    ui.reloadTag.textContent = state.reloading ? 'RELOADING…' : (a.mag === 0 ? 'PRESS R' : '');
+  }
+  function updateHealthHUD() {
+    const pct = Math.max(0, state.hp) / state.maxHp * 100;
+    ui.healthFill.style.width = pct + '%';
+    ui.healthFill.style.background = pct > 50 ? 'linear-gradient(90deg,#22c55e,#4ade80)'
+      : pct > 25 ? 'linear-gradient(90deg,#f59e0b,#fbbf24)' : 'linear-gradient(90deg,#b91c1c,#ef4444)';
+    ui.healthNum.textContent = Math.max(0, Math.round(state.hp));
+  }
+  function updateTopHUD() {
+    ui.wave.textContent = 'WAVE ' + state.wave;
+    ui.score.textContent = state.score;
+    const left = enemies.filter(e => e.alive).length + state.toSpawn;
+    ui.enemiesLeft.textContent = left + (left === 1 ? ' hostile' : ' hostiles');
+  }
+  let hitTimer = 0;
+  function showHitmarker(kill) {
+    ui.hitmarker.classList.toggle('kill', kill);
+    ui.hitmarker.style.opacity = '1';
+    hitTimer = 0.18;
+  }
+  function killfeedAdd(headshot) {
+    const d = document.createElement('div');
+    d.innerHTML = headshot ? '<b>HEADSHOT</b> · +25' : 'Eliminated · +10';
+    ui.killfeed.prepend(d);
+    setTimeout(() => d.remove(), 2600);
+    while (ui.killfeed.children.length > 5) ui.killfeed.lastChild.remove();
+  }
+  function banner(big, small) {
+    ui.banner.innerHTML = big + (small ? '<span class="small">' + small + '</span>' : '');
+    ui.banner.classList.add('show');
+    clearTimeout(banner._t);
+    banner._t = setTimeout(() => ui.banner.classList.remove('show'), 1800);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Waves
+  // ---------------------------------------------------------------------------
+  const MAX_CONCURRENT = 9;
+  function startWave(n) {
+    state.wave = n;
+    state.toSpawn = 4 + Math.floor(n * 2.5);
+    state.spawnTimer = 0;
+    state.waveActive = true;
+    banner('WAVE ' + n, state.toSpawn + ' HOSTILES INBOUND');
+    updateTopHUD();
+  }
+  function updateWaves(dt) {
+    if (!state.waveActive) {
+      state.waveDelay -= dt;
+      if (state.waveDelay <= 0) startWave(state.wave + 1);
+      return;
+    }
+    // Spawn drip-fed up to the concurrent cap
+    if (state.toSpawn > 0) {
+      state.spawnTimer -= dt;
+      const aliveCount = enemies.filter(e => e.alive).length;
+      if (state.spawnTimer <= 0 && aliveCount < MAX_CONCURRENT) {
+        makeEnemy(state.wave);
+        state.toSpawn--;
+        state.spawnTimer = Math.max(0.35, 1.4 - state.wave * 0.05);
+        updateTopHUD();
+      }
+    } else if (enemies.filter(e => e.alive).length === 0) {
+      // Wave cleared
+      state.waveActive = false;
+      state.waveDelay = 4.0;
+      state.score += 50 + state.wave * 10;
+      banner('WAVE ' + state.wave + ' CLEARED', '+' + (50 + state.wave * 10) + ' · next wave in 4s');
+      updateTopHUD();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Shooting
+  // ---------------------------------------------------------------------------
+  const raycaster = new T.Raycaster();
+  const tmpDir = new T.Vector3();
+  const tmpOrigin = new T.Vector3();
+
+  function fire() {
+    if (state.phase !== 'playing' || state.reloading) return;
+    const w = WEAPONS[state.weapon];
+    const a = ammo[state.weapon];
+    if (a.mag <= 0) { blip('reload'); startReload(); return; }
+
+    a.mag--;
+    state.fireTimer = w.fireDelay;
+    blip(state.weapon === 'pistol' ? 'pistol' : 'shot');
+
+    // Recoil kick + viewmodel punch
+    state.recoilV += w.kick;
+    const vm = viewmodels[state.weapon];
+    vm.position.z = vm.userData.restPos.z + 0.12;
+    vm.position.y = vm.userData.restPos.y + 0.03;
+    // Muzzle flash
+    vm.userData.flash.material.opacity = 0.9;
+    vm.userData.flash.rotation.z = Math.random() * Math.PI;
+    vm.userData.flash.scale.setScalar(0.7 + Math.random() * 0.6);
+    vm.userData.flashLight.intensity = 4;
+
+    // Ray from camera center with spread
+    camera.getWorldDirection(tmpDir);
+    const spread = w.spread + (sprinting ? w.sprintSpread : 0) + (player.grounded ? 0 : 0.03);
+    tmpDir.x += (Math.random() - 0.5) * spread;
+    tmpDir.y += (Math.random() - 0.5) * spread;
+    tmpDir.z += (Math.random() - 0.5) * spread;
+    tmpDir.normalize();
+    camera.getWorldPosition(tmpOrigin);
+
+    raycaster.set(tmpOrigin, tmpDir);
+    raycaster.far = w.range;
+    const targets = enemyHitMeshes.concat(worldSolids);
+    const hits = raycaster.intersectObjects(targets, false);
+
+    let endPoint = tmpOrigin.clone().addScaledVector(tmpDir, w.range);
+    if (hits.length) {
+      const h = hits[0];
+      endPoint = h.point.clone();
+      const e = h.object.userData.enemy;
+      if (e && e.alive) {
+        const head = h.object.userData.part === 'head';
+        const dmg = w.damage * (head ? w.headMult : 1);
+        damageEnemy(e, dmg, head);
+        spawnImpact(h.point, e.torso.material.color.getHex());
+      } else {
+        spawnImpact(h.point, 0xdddddd);
+      }
+    }
+    spawnTracer(muzzleWorldPos(vm), endPoint);
+  }
+
+  function muzzleWorldPos(vm) {
+    const v = new T.Vector3(vm.position.x, vm.position.y, vm.userData.muzzleZ);
+    return v.applyMatrix4(camera.matrixWorld);
+  }
+
+  function spawnTracer(from, to) {
+    const geo = new T.BufferGeometry().setFromPoints([from, to]);
+    const line = new T.Line(geo, new T.LineBasicMaterial({ color: 0xfff1a8, transparent: true, opacity: 0.85, fog: false }));
+    scene.add(line);
+    tracers.push({ line, life: 0.06 });
+  }
+  function spawnImpact(point, color) {
+    const m = new T.Mesh(new T.SphereGeometry(0.08, 6, 6), new T.MeshBasicMaterial({ color: 0xffffff, fog: false }));
+    m.position.copy(point); scene.add(m);
+    tracers.push({ line: m, life: 0.08 });
+    spawnDebris(point, color, 2);
+  }
+
+  function damageEnemy(e, dmg, head) {
+    e.hp -= dmg;
+    e.flash = 0.12;
+    if (e.hp <= 0) {
+      e.alive = false; e.dying = 0.6;
+      // remove from ray targets immediately so corpses aren't shootable
+      for (const m of e.hitMeshes) { const i = enemyHitMeshes.indexOf(m); if (i >= 0) enemyHitMeshes.splice(i, 1); }
+      state.score += head ? 25 : 10;
+      blip('kill');
+      killfeedAdd(head);
+      spawnDebris(e.grp.position, e.torso.material.color.getHex(), 8);
+      showHitmarker(true);
+      updateTopHUD();
+    } else {
+      blip('hit');
+      showHitmarker(false);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reloading & weapon switch
+  // ---------------------------------------------------------------------------
+  function startReload() {
+    const a = ammo[state.weapon], w = WEAPONS[state.weapon];
+    if (state.reloading || a.mag >= w.magSize || a.reserve <= 0) return;
+    state.reloading = true;
+    state.reloadTimer = w.reloadTime;
+    blip('reload');
+    updateAmmoHUD();
+  }
+  function finishReload() {
+    const a = ammo[state.weapon], w = WEAPONS[state.weapon];
+    const need = w.magSize - a.mag;
+    const take = Math.min(need, a.reserve);
+    a.mag += take; a.reserve -= take;
+    state.reloading = false;
+    updateAmmoHUD();
+  }
+  function switchWeapon(kind) {
+    if (kind === state.weapon || state.reloading) return;
+    viewmodels[state.weapon].visible = false;
+    state.weapon = kind;
+    viewmodels[kind].visible = true;
+    state.fireTimer = 0.12;
+    updateAmmoHUD();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Player damage / death
+  // ---------------------------------------------------------------------------
+  function hurtPlayer(dmg) {
+    state.hp -= dmg;
+    state.lastHurt = clock.elapsedTime;
+    blip('hurt');
+    ui.hurt.style.boxShadow = 'inset 0 0 180px 40px rgba(220,30,30,0.55)';
+    clearTimeout(hurtPlayer._t);
+    hurtPlayer._t = setTimeout(() => { ui.hurt.style.boxShadow = 'inset 0 0 180px 30px rgba(220,30,30,0)'; }, 120);
+    updateHealthHUD();
+    if (state.hp <= 0) gameOver();
+  }
+
+  function gameOver() {
+    state.phase = 'dead';
+    ui.hud.classList.remove('on');
+    ui.overStats.innerHTML =
+      'Final score <b>' + state.score + '</b><br>Reached <b>Wave ' + state.wave + '</b>';
+    ui.over.classList.add('show');
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Start / reset
+  // ---------------------------------------------------------------------------
+  function resetGame() {
+    // clear enemies / particles / tracers
+    while (enemies.length) removeEnemy(enemies[0]);
+    enemyHitMeshes.length = 0;
+    for (const p of particles) scene.remove(p.m); particles.length = 0;
+    for (const tr of tracers) scene.remove(tr.line); tracers.length = 0;
+
+    state.hp = state.maxHp; state.lastHurt = -10;
+    state.score = 0; state.wave = 0; state.toSpawn = 0; state.waveActive = false; state.waveDelay = 1.2;
+    state.weapon = 'rifle'; state.reloading = false; state.fireTimer = 0; state.recoil = 0; state.recoilV = 0;
+    ammo.rifle = { mag: WEAPONS.rifle.magSize, reserve: WEAPONS.rifle.reserve };
+    ammo.pistol = { mag: WEAPONS.pistol.magSize, reserve: WEAPONS.pistol.reserve };
+    viewmodels.rifle.visible = true; viewmodels.pistol.visible = false;
+
+    player.x = 0; player.z = 18; player.feetY = 0; player.vy = 0; player.grounded = true;
+    yaw = 0; pitch = -0.02;   // face -Z, toward the arena centre and the action
+
+    updateHealthHUD(); updateAmmoHUD(); updateTopHUD();
+  }
+
+  function startGame() {
+    audio();
+    resetGame();
+    state.phase = 'playing';
+    ui.start.classList.add('hidden');
+    ui.over.classList.remove('show');
+    ui.hud.classList.add('on');
+    requestPointer();
+    renderer.domElement.focus();
+    banner('SURVIVE', 'first wave incoming');
+    state.waveDelay = 2.0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Input — pointer lock with drag-to-look fallback (works inside iframes)
+  // ---------------------------------------------------------------------------
+  const keys = {};
+  let pointerLocked = false, dragging = false, sprinting = false;
+  renderer.domElement.tabIndex = 0;
+  renderer.domElement.style.outline = 'none';
+
+  function requestPointer() {
+    const p = renderer.domElement.requestPointerLock && renderer.domElement.requestPointerLock();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  }
+  document.addEventListener('pointerlockchange', () => {
+    pointerLocked = document.pointerLockElement === renderer.domElement;
+  });
+
+  function applyLook(dx, dy) {
+    const sens = 0.0022;
+    yaw -= dx * sens;
+    pitch -= dy * sens;
+    const lim = Math.PI / 2 - 0.04;
+    pitch = Math.max(-lim, Math.min(lim, pitch));
+  }
+  document.addEventListener('mousemove', (e) => {
+    if (state.phase !== 'playing') return;
+    if (pointerLocked) applyLook(e.movementX, e.movementY);
+    else if (dragging) applyLook(e.movementX, e.movementY);
+  });
+
+  renderer.domElement.addEventListener('mousedown', (e) => {
+    if (state.phase === 'menu') { startGame(); return; }
+    if (state.phase === 'dead') { startGame(); return; }
+    if (e.button === 0) {
+      state.firingHeld = true;
+      if (!pointerLocked) { dragging = true; requestPointer(); }
+      renderer.domElement.focus();
+    }
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 0) { state.firingHeld = false; dragging = false; }
+  });
+  ui.start.addEventListener('click', () => { if (state.phase === 'menu') startGame(); });
+  ui.over.addEventListener('click', () => { if (state.phase === 'dead') startGame(); });
+
+  const MOVE_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space']);
+  function onKeyDown(e) {
+    keys[e.code] = true;
+    if (state.phase === 'playing') {
+      if (e.code === 'KeyR') startReload();
+      else if (e.code === 'Digit1') switchWeapon('rifle');
+      else if (e.code === 'Digit2') switchWeapon('pistol');
+      else if (e.code === 'KeyH') ui.help.classList.toggle('show');
+    }
+    if (MOVE_CODES.has(e.code)) e.preventDefault();
+  }
+  function onKeyUp(e) { keys[e.code] = false; }
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  renderer.domElement.addEventListener('keydown', onKeyDown);
+  renderer.domElement.addEventListener('keyup', onKeyUp);
+  window.addEventListener('load', () => renderer.domElement.focus());
+  // Prevent right-click context menu mid-fight
+  renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // ---------------------------------------------------------------------------
+  // Per-frame updates
+  // ---------------------------------------------------------------------------
+  const clock = new T.Clock();
+
+  function updatePlayer(dt) {
+    // Look
+    const euler = new T.Euler(pitch + state.recoil, yaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(euler);
+
+    // Horizontal intent
+    sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) && (keys['KeyW'] || keys['ArrowUp']);
+    const speed = sprinting ? SPRINT : WALK;
+    const fwdX = -Math.sin(yaw), fwdZ = -Math.cos(yaw);
+    const rightX = -fwdZ, rightZ = fwdX;
+    let mx = 0, mz = 0;
+    if (keys['KeyW'] || keys['ArrowUp']) { mx += fwdX; mz += fwdZ; }
+    if (keys['KeyS'] || keys['ArrowDown']) { mx -= fwdX; mz -= fwdZ; }
+    if (keys['KeyA'] || keys['ArrowLeft']) { mx -= rightX; mz -= rightZ; }
+    if (keys['KeyD'] || keys['ArrowRight']) { mx += rightX; mz += rightZ; }
+    const len = Math.hypot(mx, mz);
+    const moving = len > 0;
+    if (moving) {
+      mx = mx / len * speed * dt;
+      mz = mz / len * speed * dt;
+      tryMove(player, mx, mz, player.feetY, PLAYER_R);
+      clampToArena(player, PLAYER_R);
+    }
+
+    // Vertical
+    if (keys['Space'] && player.grounded) { player.vy = JUMP_V; player.grounded = false; }
+    player.vy -= GRAVITY * dt;
+    player.feetY += player.vy * dt;
+    const gh = groundHeight(player.x, player.z, player.feetY);
+    if (player.feetY <= gh) { player.feetY = gh; player.vy = 0; player.grounded = true; }
+    else player.grounded = false;
+
+    // View bob
+    if (moving && player.grounded) state.bob += dt * (sprinting ? 14 : 9);
+    const bobY = Math.sin(state.bob) * (moving && player.grounded ? 0.045 : 0) ;
+
+    camera.position.set(player.x, player.feetY + EYE_H + bobY, player.z);
+
+    // Recoil recovery
+    state.recoil += state.recoilV;
+    state.recoilV *= 0.82;
+    state.recoil *= 0.80;
+
+    // Health regen
+    if (clock.elapsedTime - state.lastHurt > 4 && state.hp < state.maxHp) {
+      state.hp = Math.min(state.maxHp, state.hp + 12 * dt);
+      updateHealthHUD();
+    }
+  }
+
+  function updateWeaponVisual(dt) {
+    const vm = viewmodels[state.weapon];
+    const rest = vm.userData.restPos;
+    vm.position.x += (rest.x - vm.position.x) * Math.min(1, dt * 12);
+    vm.position.y += (rest.y - vm.position.y) * Math.min(1, dt * 12);
+    vm.position.z += (rest.z - vm.position.z) * Math.min(1, dt * 12);
+    // sway while reloading
+    if (state.reloading) {
+      const w = WEAPONS[state.weapon];
+      const p = 1 - state.reloadTimer / w.reloadTime;
+      vm.rotation.x = Math.sin(p * Math.PI) * 0.6;
+      vm.position.y = rest.y - Math.sin(p * Math.PI) * 0.12;
+    } else {
+      vm.rotation.x += (0 - vm.rotation.x) * Math.min(1, dt * 10);
+    }
+    // fade muzzle flash
+    const fm = vm.userData.flash.material;
+    if (fm.opacity > 0) fm.opacity = Math.max(0, fm.opacity - dt * 12);
+    const fl = vm.userData.flashLight;
+    if (fl.intensity > 0) fl.intensity = Math.max(0, fl.intensity - dt * 40);
+  }
+
+  function updateFiring(dt) {
+    state.fireTimer -= dt;
+    if (state.reloading) {
+      state.reloadTimer -= dt;
+      if (state.reloadTimer <= 0) finishReload();
+      return;
+    }
+    const w = WEAPONS[state.weapon];
+    if (state.firingHeld && state.fireTimer <= 0) {
+      if (w.auto) fire();
+      else if (!state._semiLatch) { fire(); state._semiLatch = true; }
+    }
+    if (!state.firingHeld) state._semiLatch = false;
+    // auto-reload on empty
+    if (ammo[state.weapon].mag === 0 && !state.reloading && state.firingHeld) startReload();
+  }
+
+  function updateEnemies(dt) {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+
+      // hit flash
+      if (e.flash > 0) {
+        e.flash -= dt;
+        const on = e.flash > 0;
+        for (const m of e.hitMeshes) m.material.emissive && m.material.emissive.setHex(on ? 0x661111 : 0x000000);
+        if (e.flash <= 0) for (const m of e.hitMeshes) m.material.emissive.setHex(0x000000);
+      }
+
+      if (!e.alive) {
+        // death animation: topple + sink + shrink
+        e.dying -= dt;
+        e.grp.rotation.x += dt * 3;
+        e.grp.position.y -= dt * 2.5;
+        const s = Math.max(0.01, e.dying / 0.6);
+        e.grp.scale.setScalar(s);
+        if (e.dying <= 0) {
+          for (const m of e.extraMeshes) m.geometry.dispose();
+          removeEnemy(e);
+        }
+        continue;
+      }
+
+      // Steer toward player on XZ
+      const dx = player.x - e.grp.position.x;
+      const dz = player.z - e.grp.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.01) {
+        let nx = dx / dist, nz = dz / dist;
+
+        // light separation from other enemies
+        for (const o of enemies) {
+          if (o === e || !o.alive) continue;
+          const ox = e.grp.position.x - o.grp.position.x;
+          const oz = e.grp.position.z - o.grp.position.z;
+          const od = Math.hypot(ox, oz);
+          if (od < 1.6 && od > 0.001) { nx += (ox / od) * 0.5; nz += (oz / od) * 0.5; }
+        }
+        const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
+
+        const step = e.speed * dt;
+        const startX = e.grp.position.x, startZ = e.grp.position.z;
+        const pos = { x: startX, z: startZ };
+        tryMove(pos, nx * step, nz * step, 0, 0.7);
+
+        // Anti-stall wall-follow: if cover blocked most of the intended move and
+        // we're not yet on the player, slide perpendicular so we round the box
+        // instead of grinding into it forever (keeps waves always clearable).
+        const moved = Math.hypot(pos.x - startX, pos.z - startZ);
+        if (moved < step * 0.6 && dist > 2.2) {
+          if (e.side === undefined) e.side = Math.random() < 0.5 ? 1 : -1;
+          tryMove(pos, -nz * e.side * step, nx * e.side * step, 0, 0.7);
+          e.stall = (e.stall || 0) + dt;
+          if (e.stall > 1.5) { e.side *= -1; e.stall = 0; }   // flip side to escape pockets
+        } else {
+          e.stall = 0;
+        }
+
+        clampToArena(pos, 0.7);
+        e.grp.position.x = pos.x; e.grp.position.z = pos.z;
+
+        // face player
+        e.grp.rotation.y = Math.atan2(dx, dz);
+
+        // walk anim
+        e.walkT += dt * 8;
+        const sw = Math.sin(e.walkT) * 0.5;
+        e.legL.rotation.x = sw; e.legR.rotation.x = -sw;
+        e.armL.rotation.x = -sw * 0.6; e.armR.rotation.x = sw * 0.6;
+      }
+
+      // contact damage (only if roughly same height as enemy body)
+      e.contactCD -= dt;
+      const vReach = Math.abs(player.feetY - 0) < 2.6;
+      if (dist < 1.9 && vReach && e.contactCD <= 0) {
+        hurtPlayer(8 + state.wave * 0.6);
+        e.contactCD = 0.7;
+      }
+    }
+  }
+
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt;
+      p.v.y -= GRAVITY * dt;
+      p.m.position.addScaledVector(p.v, dt);
+      if (p.m.position.y < 0.1) { p.m.position.y = 0.1; p.v.y *= -0.4; p.v.x *= 0.6; p.v.z *= 0.6; }
+      p.m.rotation.x += dt * 6; p.m.rotation.y += dt * 5;
+      if (p.life <= 0) { scene.remove(p.m); p.m.geometry.dispose(); particles.splice(i, 1); }
+    }
+    for (let i = tracers.length - 1; i >= 0; i--) {
+      const tr = tracers[i];
+      tr.life -= dt;
+      if (tr.line.material) tr.line.material.opacity = Math.max(0, tr.life * 12);
+      if (tr.life <= 0) { scene.remove(tr.line); if (tr.line.geometry) tr.line.geometry.dispose(); tracers.splice(i, 1); }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Main loop
+  // ---------------------------------------------------------------------------
+  function tick() {
+    const dt = Math.min(0.05, clock.getDelta());
+
+    if (state.phase === 'playing') {
+      updatePlayer(dt);
+      updateFiring(dt);
+      updateWeaponVisual(dt);
+      updateEnemies(dt);
+      updateParticles(dt);
+      updateWaves(dt);
+
+      // keep sun shadow centered roughly on player
+      sun.target.position.set(player.x, 0, player.z);
+      sun.position.set(player.x - 40, 70, player.z + 30);
+
+      // hitmarker fade
+      if (hitTimer > 0) { hitTimer -= dt; if (hitTimer <= 0) ui.hitmarker.style.opacity = '0'; }
+      updateAmmoHUD();
+    } else {
+      // idle camera drift on menus
+      updateParticles(dt);
+    }
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+
+  // Menu camera: a nice overview of the arena
+  camera.position.set(0, 6, 26);
+  camera.lookAt(0, 2, 0);
+  updateHealthHUD(); updateAmmoHUD(); updateTopHUD();
+  tick();
+
+  // ---------------------------------------------------------------------------
+  // Resize
+  // ---------------------------------------------------------------------------
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+</script>
+</body>
+</html>
