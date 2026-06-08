@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BLOX FORCES — Wave Survival FPS</title>
+<style>
+  :root { --ink:#f2f6fb; --dim:#9fb0c4; --accent:#4ade80; --warn:#fbbf24; --danger:#ef4444; --cyan:#22d3ee; --bg:#0a0c10; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#000; color:var(--ink); font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; user-select:none; }
+  #app { position:absolute; inset:0; }
+  canvas { display:block; }
+
+  /* Overlays */
+  #start,#over { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:30; cursor:pointer; transition:opacity .35s ease; }
+  #start { background:radial-gradient(ellipse at center,rgba(10,14,22,.82),rgba(0,0,0,.97)); }
+  #over { background:radial-gradient(ellipse at center,rgba(40,8,8,.82),rgba(0,0,0,.97)); display:none; }
+  #over.show { display:flex; }
+  #start.hidden { opacity:0; pointer-events:none; }
+  .card { text-align:center; padding:38px 54px; border:1px solid rgba(255,255,255,.12); background:rgba(15,18,24,.72); backdrop-filter:blur(6px); border-radius:6px; max-width:620px; }
+  .card .eyebrow { font-size:11px; letter-spacing:.28em; color:var(--cyan); text-transform:uppercase; margin-bottom:14px; }
+  .card h1 { font-weight:700; font-size:36px; letter-spacing:.06em; margin-bottom:6px; color:#fff; text-shadow:0 2px 0 #155e3a; }
+  #over h1 { color:var(--danger); text-shadow:0 2px 0 #5c0f0f; }
+  .card .sub { color:var(--dim); font-size:13px; margin-bottom:24px; }
+  .card .cta { display:inline-block; padding:12px 26px; border:1px solid var(--accent); color:#06210f; background:var(--accent); font-size:13px; letter-spacing:.18em; text-transform:uppercase; border-radius:4px; font-weight:700; }
+  #over .stats { margin:16px 0 24px; font-size:15px; line-height:1.8; } #over .stats b { color:var(--accent); }
+  .controls { margin-top:26px; display:grid; grid-template-columns:auto 1fr; gap:7px 18px; text-align:left; font-size:12px; color:var(--dim); }
+  kbd { font-family:inherit; border:1px solid rgba(255,255,255,.2); padding:1px 7px; border-radius:3px; color:var(--ink); font-size:11px; background:rgba(255,255,255,.05); }
+
+  /* HUD */
+  #hud { position:absolute; inset:0; z-index:10; pointer-events:none; display:none; }
+  #hud.on { display:block; }
+  #topbar { position:absolute; top:14px; left:50%; transform:translateX(-50%); text-align:center; }
+  #wave { font-size:13px; letter-spacing:.22em; color:var(--warn); text-transform:uppercase; }
+  #score { font-size:26px; font-weight:700; color:#fff; }
+  #enemiesLeft { font-size:11px; color:var(--dim); letter-spacing:.12em; }
+
+  /* Crosshair + hitmarker */
+  #crosshair { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:22px; height:22px; opacity:.9; }
+  #crosshair span { position:absolute; background:#eafff2; box-shadow:0 0 2px rgba(0,0,0,.8); }
+  #crosshair .v { left:50%; top:0; width:2px; height:100%; transform:translateX(-50%); }
+  #crosshair .h { top:50%; left:0; height:2px; width:100%; transform:translateY(-50%); }
+  #crosshair .dot { left:50%; top:50%; width:3px; height:3px; background:var(--accent); transform:translate(-50%,-50%); border-radius:50%; }
+  #hitmarker { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%) rotate(45deg); width:18px; height:18px; opacity:0; }
+  #hitmarker span { position:absolute; background:#fff; }
+  #hitmarker .v { left:50%; top:0; width:2px; height:100%; transform:translateX(-50%); }
+  #hitmarker .h { top:50%; left:0; height:2px; width:100%; transform:translateY(-50%); }
+  #hitmarker.kill span { background:var(--danger); }
+
+  #hurt { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 200px 30px rgba(220,30,30,0); transition:box-shadow .1s; }
+
+  /* Scope overlay */
+  #scope { position:absolute; inset:0; display:none; }
+  #scope.show { display:block; background:radial-gradient(circle at center, transparent 0 28%, rgba(0,0,0,.92) 30% 100%); }
+  #scope::before { content:''; position:absolute; left:50%; top:50%; width:1px; height:100%; background:rgba(0,0,0,.8); transform:translateX(-50%); }
+  #scope::after { content:''; position:absolute; top:50%; left:50%; height:1px; width:100%; background:rgba(0,0,0,.8); transform:translateY(-50%); }
+
+  /* Health */
+  #healthWrap { position:absolute; left:22px; bottom:22px; width:240px; }
+  #healthLabel { font-size:10px; letter-spacing:.18em; color:var(--dim); text-transform:uppercase; margin-bottom:5px; }
+  #healthBar { height:16px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.18); border-radius:3px; overflow:hidden; }
+  #healthFill { height:100%; width:100%; background:linear-gradient(90deg,#22c55e,#4ade80); transition:width .12s linear,background .2s; }
+  #healthNum { font-size:12px; margin-top:3px; }
+
+  /* Weapon panel */
+  #ammoWrap { position:absolute; right:26px; bottom:22px; text-align:right; }
+  #weaponName { font-size:12px; letter-spacing:.12em; color:var(--cyan); text-transform:uppercase; }
+  #ammoCount { font-size:40px; font-weight:700; line-height:1; color:#fff; }
+  #ammoCount .reserve { font-size:18px; color:var(--dim); font-weight:400; }
+  #attachName { font-size:11px; color:var(--warn); letter-spacing:.04em; }
+  #grenadeWrap { font-size:12px; color:var(--dim); margin-top:2px; } #grenades { color:var(--warn); font-weight:700; }
+  #reloadTag { font-size:11px; color:var(--warn); letter-spacing:.16em; height:14px; }
+
+  /* Weapon list */
+  #weaponList { position:absolute; right:26px; bottom:140px; display:flex; flex-direction:column; gap:3px; align-items:flex-end; }
+  .wrow { display:flex; gap:7px; align-items:center; font-size:11px; color:var(--dim); opacity:.55; }
+  .wrow.active { opacity:1; color:var(--ink); }
+  .wrow .wkey { border:1px solid rgba(255,255,255,.2); border-radius:3px; padding:0 5px; font-size:10px; }
+  .wrow.active .wkey { border-color:var(--cyan); color:var(--cyan); }
+
+  /* Toast / banner / killfeed */
+  #toast { position:absolute; left:50%; top:58%; transform:translateX(-50%); font-size:18px; font-weight:700; letter-spacing:.1em; opacity:0; transition:opacity .15s; text-shadow:0 2px 6px rgba(0,0,0,.6); }
+  #banner { position:absolute; top:36%; left:50%; transform:translate(-50%,-50%); font-size:44px; font-weight:700; letter-spacing:.1em; color:#fff; text-shadow:0 3px 0 #155e3a,0 0 24px rgba(74,222,128,.4); opacity:0; transition:opacity .4s; text-align:center; }
+  #banner.show { opacity:1; }
+  #banner .small { display:block; font-size:15px; color:var(--accent); letter-spacing:.2em; margin-top:6px; }
+  #killfeed { position:absolute; right:22px; top:64px; text-align:right; font-size:12px; }
+  #killfeed div { color:var(--ink); opacity:.9; margin:2px 0; } #killfeed b { color:var(--danger); }
+
+  /* Help */
+  #help { position:absolute; left:22px; top:64px; font-size:11px; background:rgba(10,12,16,.8); border:1px solid rgba(255,255,255,.12); padding:12px 16px; border-radius:4px; display:none; }
+  #help.show { display:block; }
+  #help h2 { font-size:10px; letter-spacing:.24em; text-transform:uppercase; color:var(--cyan); margin-bottom:8px; }
+  #help .line { display:grid; grid-template-columns:92px 1fr; gap:8px; margin:3px 0; color:var(--dim); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div id="topbar"><div id="wave">WAVE 1</div><div id="score">0</div><div id="enemiesLeft">0 hostiles</div></div>
+  <div id="crosshair"><span class="v"></span><span class="h"></span><span class="dot"></span></div>
+  <div id="hitmarker"><span class="v"></span><span class="h"></span></div>
+  <div id="hurt"></div>
+  <div id="scope"></div>
+  <div id="killfeed"></div>
+  <div id="banner"></div>
+  <div id="toast"></div>
+
+  <div id="healthWrap"><div id="healthLabel">Health</div><div id="healthBar"><div id="healthFill"></div></div><div id="healthNum">100</div></div>
+
+  <div id="weaponList"></div>
+  <div id="ammoWrap">
+    <div id="weaponName">SMG · BLOX-9</div>
+    <div id="ammoCount"><span id="mag">30</span><span class="reserve"> / <span id="reserve">240</span></span></div>
+    <div id="attachName">Iron Sights</div>
+    <div id="grenadeWrap">Grenades <span id="grenades">3</span></div>
+    <div id="reloadTag"></div>
+  </div>
+
+  <div id="help">
+    <h2>Controls</h2>
+    <div class="line"><kbd>W A S D</kbd><span>Move</span></div>
+    <div class="line"><kbd>Shift</kbd><span>Sprint</span></div>
+    <div class="line"><kbd>Space</kbd><span>Jump</span></div>
+    <div class="line"><kbd>Mouse</kbd><span>Look</span></div>
+    <div class="line"><kbd>L-Click</kbd><span>Fire</span></div>
+    <div class="line"><kbd>R-Click</kbd><span>Aim (ADS)</span></div>
+    <div class="line"><kbd>R</kbd><span>Reload</span></div>
+    <div class="line"><kbd>G</kbd><span>Grenade</span></div>
+    <div class="line"><kbd>T</kbd><span>Cycle attachment</span></div>
+    <div class="line"><kbd>1-5</kbd><span>Weapons</span></div>
+    <div class="line"><kbd>H</kbd><span>Toggle help</span></div>
+  </div>
+</div>
+
+<div id="start">
+  <div class="card">
+    <div class="eyebrow">Sci-Fi · Wave Survival</div>
+    <h1>BLOX&nbsp;FORCES</h1>
+    <div class="sub">Hold the ruins against escalating waves of sci-fi hostiles. 5 weapons, attachments, grenades. Aim for the head.</div>
+    <div class="cta">Click to deploy</div>
+    <div class="controls">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move · <kbd>Shift</kbd> Sprint · <kbd>Space</kbd> Jump</span>
+      <span><kbd>Mouse</kbd></span><span><kbd>L</kbd> Fire · <kbd>R-Click</kbd> Aim · <kbd>R</kbd> Reload</span>
+      <span><kbd>1</kbd>–<kbd>5</kbd></span><span>SMG · MG · Shotgun · Sniper · Rocket</span>
+      <span><kbd>G</kbd></span><span>Grenade · <kbd>T</kbd> Cycle attachment · <kbd>H</kbd> Help</span>
+    </div>
+  </div>
+</div>
+
+<div id="over">
+  <div class="card">
+    <div class="eyebrow" style="color:var(--danger)">You were overrun</div>
+    <h1>GAME OVER</h1>
+    <div class="stats" id="overStats"></div>
+    <div class="cta">Click to redeploy</div>
+  </div>
+</div>
+
+<!--THREE-->
+<!--GAME-->
+</body>
+</html>
