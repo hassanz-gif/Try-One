@@ -10,8 +10,9 @@ a blocky arena, two weapons, and endless waves of blocky hostiles to hold off.
 
 ## Play
 
-Open `index.html` in any modern browser (Chrome/Edge/Firefox/Safari). That's it —
-`lib/three.min.js` is vendored locally so it runs fully offline.
+Open `index.html` in any modern browser (Chrome/Edge/Firefox/Safari) — just
+double-click it. It's a **single self-contained file** with Three.js r128 inlined,
+so there's nothing else to install and it runs fully offline. No web server needed.
 
 ## Controls
 
@@ -40,8 +41,9 @@ Open `index.html` in any modern browser (Chrome/Edge/Firefox/Safari). That's it 
 ## Project layout
 
 ```
-index.html          The whole game (scene, arena, enemies, weapons, HUD, loop)
-lib/three.min.js     Vendored Three.js r128 (UMD build) so the game runs offline
+index.html    The entire game in one self-contained file — Three.js r128 is
+              inlined, followed by the game (scene, arena, enemies, weapons,
+              HUD, loop). Download this one file and double-click to play.
 README.md
 ```
 
