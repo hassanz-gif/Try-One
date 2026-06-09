@@ -4832,12 +4832,12 @@
     if (!modelLoaded) return;
     if (state.phase !== 'playing') { playerModel.visible = true; setHead(true); playerModel.rotation.y += dt * 0.5; playClip(CLIP.idle); return; }
     const thirdP = state.view === 'third';
-    // The character is YOU — rendered only in third person (camera behind). First
-    // person stays a clean weapon view (no body/shadow looming over the camera).
-    playerModel.visible = thirdP;
-    viewmodels[state.weapon].visible = !thirdP;   // hide held-weapon viewmodel in third person
-    if (!thirdP) return;
-    setHead(true);
+    // The model is YOU. Shown in both views: third person shows all of him; first
+    // person hides his head (so it doesn't fill the camera) and you see your own
+    // torso/legs/arms when you look down. Now correctly sized (~player height).
+    playerModel.visible = true;
+    setHead(thirdP);                               // hide head only in first person
+    viewmodels[state.weapon].visible = !thirdP;    // weapon viewmodel only in first person
     playerModel.position.set(player.x, player.feetY + FOOT_LIFT, player.z);
     playerModel.rotation.y = yaw + MODEL.yawOffset;
     if (state.moving && sprinting) playClip(CLIP.run);
