@@ -47,6 +47,7 @@
   #hitmarker.kill span { background:var(--danger); }
 
   #hurt { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 200px 30px rgba(220,30,30,0); transition:box-shadow .1s; }
+  #vignette { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 240px 70px rgba(0,0,0,.5); mix-blend-mode:multiply; }
 
   /* Scope overlay */
   #scope { position:absolute; inset:0; display:none; }
@@ -100,6 +101,7 @@
   <div id="crosshair"><span class="v"></span><span class="h"></span><span class="dot"></span></div>
   <div id="hitmarker"><span class="v"></span><span class="h"></span></div>
   <div id="hurt"></div>
+  <div id="vignette"></div>
   <div id="scope"></div>
   <div id="killfeed"></div>
   <div id="banner"></div>
@@ -4110,6 +4112,16 @@
     else if (kind === 'sniper') { box(body,0.1,0.11,1.0,0,0,-0.5); box(dark,0.07,0.06,0.7,0,0.005,-0.95); box(dark,0.06,0.08,0.34,0,0.13,-0.35); box(M(0x0a0a0a,0.5,0.3),0.05,0.05,0.12,0,0.13,-0.18); box(accent,0.1,0.2,0.1,0,-0.14,-0.05); box(body,0.09,0.14,0.3,0,-0.02,0.2); }
     else { box(M(0x3a4250,0.4,0.5),0.16,0.16,0.95,0,0,-0.45); box(dark,0.2,0.2,0.18,0,0,-0.95); box(accent,0.06,0.06,0.4,0,0.12,-0.4); box(M(0xef4444,0.3,0.4),0.05,0.05,0.05,0,0,-0.95); }
 
+    // first-person hands gripping the weapon (the "arms on the gun" look)
+    const glove = M(0x3a3f47, 0.2, 0.75);
+    const addHand = (hx, hy, hz, ax) => {
+      const fore = new T.Mesh(new T.BoxGeometry(0.12, 0.12, 0.36), glove); fore.position.set(hx, hy - 0.13, hz + 0.17); fore.rotation.x = ax; g.add(fore);
+      const fist = new T.Mesh(new T.BoxGeometry(0.14, 0.14, 0.15), glove); fist.position.set(hx, hy, hz); g.add(fist);
+    };
+    const foreZ = kind === 'sniper' ? -0.6 : kind === 'shotgun' ? -0.5 : kind === 'rocket' ? -0.55 : -0.42;
+    addHand(0.0, -0.06, 0.06, 0.55);     // trigger hand on the grip
+    addHand(-0.01, -0.05, foreZ, 0.25);  // support hand on the foregrip/barrel
+
     // sight/scope visual driven by attachment
     const sight = box(M(0x101216,0.4,0.4), 0.06, 0.06, 0.16, 0, 0.12, -0.25); sight.visible = false;
     const scope = box(M(0x0a0a0a,0.5,0.3), 0.08, 0.09, 0.36, 0, 0.15, -0.3); scope.visible = false;
@@ -4293,7 +4305,7 @@
     score: 0, wave: 0, toSpawn: 0, spawnTimer: 0, spawnQueue: [], waveActive: false, waveDelay: 0,
     weapon: 'smg', recoil: 0, recoilV: 0, fireTimer: 0, firingHeld: false, semiLatch: false,
     reloading: false, reloadTimer: 0, ads: false, adsAmt: 0, bob: 0,
-    grenades: 3, maxGrenades: 5, nadeCD: 0, pressure: 0, view: 'first', moving: false,
+    grenades: 3, maxGrenades: 5, nadeCD: 0, pressure: 0, view: 'first', moving: false, swayX: 0, swayY: 0,
   };
   const ammo = {};
   WEAPON_ORDER.forEach(k => ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] });
@@ -4572,6 +4584,7 @@
     const sens = 0.0022 * (state.ads ? adsZoom() : 1);
     yaw -= dx * sens; pitch -= dy * sens;
     const lim = Math.PI / 2 - 0.04; pitch = clamp(pitch, -lim, lim);
+    state.swayX += dx; state.swayY += dy;   // feed weapon sway
   }
   document.addEventListener('mousemove', (e) => { if (state.phase !== 'playing') return; if (pointerLocked || dragging) applyLook(e.movementX, e.movementY); });
   renderer.domElement.addEventListener('mousedown', (e) => {
@@ -4651,14 +4664,31 @@
 
   function updateWeaponVisual(dt) {
     const vm = viewmodels[state.weapon], rest = vm.userData.restPos, ads = vm.userData.adsPos;
-    const tx = lerp(rest.x, ads.x, state.adsAmt), ty = lerp(rest.y, ads.y, state.adsAmt), tz = lerp(rest.z, ads.z, state.adsAmt);
+    // Sway: weapon lags behind the camera. Consume this frame's look delta, damp by ADS.
+    const damp = 1 - 0.6 * state.adsAmt;
+    const sX = clamp(state.swayX, -90, 90) * damp, sY = clamp(state.swayY, -90, 90) * damp;
+    state.swayX = 0; state.swayY = 0;
+    vm.userData.swayY = lerp(vm.userData.swayY || 0, -sX * 0.0011, Math.min(1, dt * 10));
+    vm.userData.swayX = lerp(vm.userData.swayX || 0,  sY * 0.0011, Math.min(1, dt * 10));
+    // Walk bob + idle breathing
+    const moving = state.moving && player.grounded;
+    const bobX = moving ? Math.cos(state.bob) * 0.012 * damp : 0;
+    const bobY = moving ? Math.abs(Math.sin(state.bob)) * 0.010 * damp : 0;
+    const idleY = Math.sin(clock.elapsedTime * 1.6) * 0.004 * damp;
+
     let kz = 0, ky = 0;
     if (vm.userData.kick > 0) { kz = vm.userData.kick * 0.12; ky = vm.userData.kick * 0.03; vm.userData.kick = Math.max(0, vm.userData.kick - dt * 8); }
-    vm.position.x += (tx - vm.position.x) * Math.min(1, dt * 14);
-    vm.position.y += (ty + ky - vm.position.y) * Math.min(1, dt * 14);
-    vm.position.z += (tz + kz - vm.position.z) * Math.min(1, dt * 14);
-    if (state.reloading) { const p = 1 - state.reloadTimer / WEAPONS[state.weapon].reloadTime; vm.rotation.x = Math.sin(p * Math.PI) * 0.7; }
-    else vm.rotation.x += (0 - vm.rotation.x) * Math.min(1, dt * 10);
+    const tx = lerp(rest.x, ads.x, state.adsAmt) + bobX + vm.userData.swayY * 0.35;
+    const ty = lerp(rest.y, ads.y, state.adsAmt) - bobY + idleY;
+    const tz = lerp(rest.z, ads.z, state.adsAmt);
+    vm.position.x += (tx - vm.position.x) * Math.min(1, dt * 16);
+    vm.position.y += (ty + ky - vm.position.y) * Math.min(1, dt * 16);
+    vm.position.z += (tz + kz - vm.position.z) * Math.min(1, dt * 16);
+
+    let rotX = vm.userData.swayX, rotY = vm.userData.swayY;
+    if (state.reloading) rotX = Math.sin((1 - state.reloadTimer / WEAPONS[state.weapon].reloadTime) * Math.PI) * 0.7;
+    vm.rotation.x += (rotX - vm.rotation.x) * Math.min(1, dt * 12);
+    vm.rotation.y += (rotY - vm.rotation.y) * Math.min(1, dt * 12);
     const fm = vm.userData.flash.material; if (fm.opacity > 0) fm.opacity = Math.max(0, fm.opacity - dt * 12);
     const fl = vm.userData.flashLight; if (fl.intensity > 0) fl.intensity = Math.max(0, fl.intensity - dt * 40);
   }

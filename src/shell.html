@@ -47,6 +47,7 @@
   #hitmarker.kill span { background:var(--danger); }
 
   #hurt { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 200px 30px rgba(220,30,30,0); transition:box-shadow .1s; }
+  #vignette { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 240px 70px rgba(0,0,0,.5); mix-blend-mode:multiply; }
 
   /* Scope overlay */
   #scope { position:absolute; inset:0; display:none; }
@@ -100,6 +101,7 @@
   <div id="crosshair"><span class="v"></span><span class="h"></span><span class="dot"></span></div>
   <div id="hitmarker"><span class="v"></span><span class="h"></span></div>
   <div id="hurt"></div>
+  <div id="vignette"></div>
   <div id="scope"></div>
   <div id="killfeed"></div>
   <div id="banner"></div>
