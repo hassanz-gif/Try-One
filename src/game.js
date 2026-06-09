@@ -306,15 +306,17 @@
     else if (kind === 'sniper') { box(body,0.1,0.11,1.0,0,0,-0.5); box(dark,0.07,0.06,0.7,0,0.005,-0.95); box(dark,0.06,0.08,0.34,0,0.13,-0.35); box(M(0x0a0a0a,0.5,0.3),0.05,0.05,0.12,0,0.13,-0.18); box(accent,0.1,0.2,0.1,0,-0.14,-0.05); box(body,0.09,0.14,0.3,0,-0.02,0.2); }
     else { box(M(0x3a4250,0.4,0.5),0.16,0.16,0.95,0,0,-0.45); box(dark,0.2,0.2,0.18,0,0,-0.95); box(accent,0.06,0.06,0.4,0,0.12,-0.4); box(M(0xef4444,0.3,0.4),0.05,0.05,0.05,0,0,-0.95); }
 
-    // first-person hands gripping the weapon (the "arms on the gun" look)
-    const glove = M(0x3a3f47, 0.2, 0.75);
-    const addHand = (hx, hy, hz, ax) => {
-      const fore = new T.Mesh(new T.BoxGeometry(0.12, 0.12, 0.36), glove); fore.position.set(hx, hy - 0.13, hz + 0.17); fore.rotation.x = ax; g.add(fore);
-      const fist = new T.Mesh(new T.BoxGeometry(0.14, 0.14, 0.15), glove); fist.position.set(hx, hy, hz); g.add(fist);
+    // first-person ROBOT arms gripping the weapon — the Sentinel's gold forearms,
+    // blue cuffs and dark gloves, sized to read clearly in view.
+    const armGold = M(0xc9a233, 0.45, 0.4), armBlue = M(0x1e4fa5, 0.4, 0.4), glove = M(0x202329, 0.3, 0.6);
+    const addArm = (hx, hy, hz, ax, side) => {
+      const fore = new T.Mesh(new T.BoxGeometry(0.17, 0.17, 0.55), armGold); fore.position.set(hx, hy - 0.22, hz + 0.3); fore.rotation.set(ax, side * 0.14, 0); g.add(fore);
+      const cuff = new T.Mesh(new T.BoxGeometry(0.19, 0.19, 0.1), armBlue); cuff.position.set(hx, hy - 0.4, hz + 0.54); cuff.rotation.set(ax, side * 0.14, 0); g.add(cuff);
+      const fist = new T.Mesh(new T.BoxGeometry(0.18, 0.18, 0.2), glove); fist.position.set(hx, hy, hz); g.add(fist);
     };
     const foreZ = kind === 'sniper' ? -0.6 : kind === 'shotgun' ? -0.5 : kind === 'rocket' ? -0.55 : -0.42;
-    addHand(0.0, -0.06, 0.06, 0.55);     // trigger hand on the grip
-    addHand(-0.01, -0.05, foreZ, 0.25);  // support hand on the foregrip/barrel
+    addArm(0.04, -0.05, 0.06, 0.62, 1);    // trigger arm (right)
+    addArm(-0.05, -0.04, foreZ, 0.42, -1); // support arm (left)
 
     // sight/scope visual driven by attachment
     const sight = box(M(0x101216,0.4,0.4), 0.06, 0.06, 0.16, 0, 0.12, -0.25); sight.visible = false;
@@ -564,7 +566,7 @@
   const ui = {};
   ['start','over','overStats','hud','wave','score','enemiesLeft','healthFill','healthNum',
    'weaponName','mag','reserve','reloadTag','attachName','grenades','weaponList',
-   'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory'].forEach(id => ui[id] = el(id));
+   'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory','invBtn'].forEach(id => ui[id] = el(id));
 
   function buildWeaponList() {
     ui.weaponList.innerHTML = '';
@@ -847,13 +849,14 @@
   window.addEventListener('mouseup', (e) => { if (e.button === 0) { state.firingHeld = false; dragging = false; } else if (e.button === 2) state.ads = false; });
   ui.start.addEventListener('click', () => { if (state.phase === 'menu') startGame(); });
   ui.over.addEventListener('click', () => { if (state.phase === 'dead') startGame(); });
+  if (ui.invBtn) ui.invBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.phase === 'playing') toggleInventory(); });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const MOVE_CODES = new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space']);
   function onKeyDown(e) {
     keys[e.code] = true;
     if (state.phase === 'playing') {
-      if (e.code === 'Tab') { e.preventDefault(); toggleInventory(); return; }
+      if (e.code === 'Tab' || e.code === 'KeyI') { e.preventDefault(); toggleInventory(); return; }
       if (e.code === 'Escape' && state.invOpen) { toggleInventory(false); return; }
       if (e.code === 'KeyR') startReload();
       else if (e.code === 'KeyG') throwGrenade();
