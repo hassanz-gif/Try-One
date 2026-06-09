@@ -729,7 +729,6 @@
     state.phase = 'dead'; ui.hud.classList.remove('on');
     ui.overStats.innerHTML = 'Final score <b>' + state.score + '</b><br>Reached <b>Wave ' + state.wave + '</b>';
     ui.over.classList.add('show'); ui.scope.classList.remove('show');
-    if (modelLoaded) playClip(CLIP.dead);
     if (document.pointerLockElement) document.exitPointerLock();
   }
   function resetGame() {
@@ -989,7 +988,7 @@
   // Player character model — Golden Sentinel (GLB): menu showcase + 1st/3rd person
   // ---------------------------------------------------------------------------
   const SENTINEL_URL = 'assets/sentinel.glb';
-  const MODEL = { height: 3.6, yawOffset: Math.PI, tpDist: 6.5, tpUp: 1.2, fpBody: true };
+  const MODEL = { height: 2.5, yawOffset: Math.PI, tpDist: 6.5, tpUp: 1.2 };  // height ≈ player size
   const CLIP = { idle: 'Idle_02', walk: 'Walking', run: 'Running', dead: 'Dead' };
   let playerModel = null, playerMixer = null, clips = {}, curClip = null, modelLoaded = false, headBone = null, headBaseScale = null, FOOT_LIFT = 0;
 
@@ -1002,8 +1001,10 @@
         if (!headBone && o.name && /head/i.test(o.name)) headBone = o;
       });
       // scale to target height; record how far to lift so the feet sit on the ground
+      m.updateMatrixWorld(true);
       let box = new T.Box3().setFromObject(m); const size = new T.Vector3(); box.getSize(size);
       m.scale.setScalar(MODEL.height / (size.y || 1));
+      m.updateMatrixWorld(true);
       box = new T.Box3().setFromObject(m); FOOT_LIFT = -box.min.y;
       if (headBone) headBaseScale = headBone.scale.clone();
       playerModel = m; m.visible = false; scene.add(m);
@@ -1027,11 +1028,14 @@
     if (!modelLoaded) return;
     if (state.phase !== 'playing') { playerModel.visible = true; setHead(true); playerModel.rotation.y += dt * 0.5; playClip(CLIP.idle); return; }
     const thirdP = state.view === 'third';
-    playerModel.visible = thirdP || MODEL.fpBody;
+    // The character is YOU — rendered only in third person (camera behind). First
+    // person stays a clean weapon view (no body/shadow looming over the camera).
+    playerModel.visible = thirdP;
+    viewmodels[state.weapon].visible = !thirdP;   // hide held-weapon viewmodel in third person
+    if (!thirdP) return;
+    setHead(true);
     playerModel.position.set(player.x, player.feetY + FOOT_LIFT, player.z);
     playerModel.rotation.y = yaw + MODEL.yawOffset;
-    setHead(thirdP);                              // hide own head in first person
-    viewmodels[state.weapon].visible = !thirdP;   // hide held-weapon viewmodel in third person
     if (state.moving && sprinting) playClip(CLIP.run);
     else if (state.moving) playClip(CLIP.walk);
     else playClip(CLIP.idle);

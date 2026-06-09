@@ -26,8 +26,8 @@ character model (you'll see a console note). The local server is only needed to 
 
 A rigged, animated GLB (made in Meshy, ~20k tris, 8 clips) is wired in as your character:
 - **Menu showcase** — he stands on the deploy screen, idling.
-- **First / third person** — press **`V`** to toggle. In first person you see your own
-  body/arms; in third person the camera pulls behind him and he walks/runs/idles.
+- **First / third person** — press **`V`** to toggle. First person is a clean weapon view;
+  third person pulls the camera behind your character (player-sized) and he walks/runs/idles.
 
 Drop a different model at `assets/sentinel.glb` (rigged, with clips named like
 `Idle_02` / `Walking` / `Running` / `Dead`) to swap characters. Scale/facing are tuned by
