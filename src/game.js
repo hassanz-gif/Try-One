@@ -484,11 +484,60 @@
   }
   function collectPickup(p) {
     sfx('pickup');
-    if (p.kind === 'ammo') { for (const k of WEAPON_ORDER) ammo[k].reserve = Math.min(ammo[k].reserve + Math.round(WEAPONS[k].magSize * 1.5), WEAPONS[k].reserve * 2); toast('+AMMO', 0x4ade80); }
-    else if (p.kind === 'health') { state.hp = Math.min(state.maxHp, state.hp + 35); updateHealthHUD(); toast('+35 HP', 0xef4444); }
+    if (p.kind === 'ammo') { for (const k of WEAPON_ORDER) ammo[k].reserve = Math.min(ammo[k].reserve + Math.round(WEAPONS[k].magSize * 1.5), WEAPONS[k].reserve * 2); state.inv.ammo++; toast('+AMMO', 0x4ade80); }
+    else if (p.kind === 'health') { state.inv.medkit++; toast('+MEDKIT  (Q to use)', 0xef4444); }   // stored, not auto-used
     else if (p.kind === 'grenade') { state.grenades = Math.min(state.maxGrenades, state.grenades + 1); updateWeaponHUD(); toast('+GRENADE', 0xfbbf24); }
+    if (state.invOpen) renderInventory();
     scene.remove(p.grp);
     const i = pickups.indexOf(p); if (i >= 0) pickups.splice(i, 1);
+  }
+  function useMedkit() {
+    if (state.inv.medkit <= 0 || state.hp >= state.maxHp) return;
+    state.inv.medkit--; state.hp = Math.min(state.maxHp, state.hp + 45); updateHealthHUD(); sfx('pickup'); toast('+45 HP', 0x4ade80);
+    if (state.invOpen) renderInventory();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inventory (Rust-styled): loadout belt, attachments, picked-up items
+  // ---------------------------------------------------------------------------
+  function toggleInventory(open) {
+    const want = open === undefined ? !state.invOpen : open;
+    if (want === state.invOpen) return;
+    state.invOpen = want;
+    if (want) {
+      ui.inventory.classList.add('show'); renderInventory();
+      state.firingHeld = false; if (document.pointerLockElement) document.exitPointerLock();
+    } else {
+      ui.inventory.classList.remove('show');
+      if (state.phase === 'playing') requestPointer();
+      renderer.domElement.focus();
+    }
+  }
+  function renderInventory() {
+    if (!ui.inventory) return;
+    const W = (k, i) => { const w = WEAPONS[k], a = ammo[k]; return '<div class="wcard' + (k === state.weapon ? ' eq' : '') + '" data-w="' + k + '"><div class="wc-top"><span class="wc-key">' + (i + 1) + '</span><span class="wc-name">' + w.name.split(' · ')[0] + '</span></div><div class="wc-ammo">' + a.mag + ' / ' + a.reserve + '</div><div class="wc-att">' + ATTACH[a.attach].label + '</div></div>'; };
+    const cw = WEAPONS[state.weapon], ca = ammo[state.weapon];
+    let h = '<div class="inv-card"><div class="inv-head"><span>INVENTORY</span><span class="inv-x">TAB / ESC to close</span></div><div class="inv-cols">';
+    // operative
+    h += '<div class="inv-col"><div class="inv-title">Operative</div><div class="op-name">BLOX·OP-7</div><div class="op-rank">RANK — WAVE ' + state.wave + '</div><div class="op-stats">' +
+      '<div><span>Health</span><b>' + Math.max(0, Math.round(state.hp)) + '</b></div>' +
+      '<div><span>Kills</span><b>' + state.kills + '</b></div>' +
+      '<div><span>Score</span><b>' + state.score + '</b></div>' +
+      '<div><span>Grenades</span><b>' + state.grenades + '</b></div></div></div>';
+    // arsenal + attachments
+    h += '<div class="inv-col"><div class="inv-title">Arsenal</div><div class="arsenal">' + WEAPON_ORDER.map((k, i) => W(k, i)).join('') + '</div>';
+    h += '<div class="inv-sub">Attachments — ' + cw.name.split(' · ')[0] + '</div><div class="atts">' + cw.attachs.map(at => '<div class="att' + (at === ca.attach ? ' on' : '') + '" data-att="' + at + '">' + ATTACH[at].label + '</div>').join('') + '</div></div>';
+    // items
+    h += '<div class="inv-col"><div class="inv-title">Items</div><div class="items">' +
+      '<div class="item' + (state.inv.medkit > 0 ? ' use' : '') + '" data-item="medkit"><div class="it-ic" style="background:#ef4444"></div><div class="it-n">Medkit</div><div class="it-x">x' + state.inv.medkit + '</div><div class="it-h">' + (state.inv.medkit > 0 ? 'click / Q' : '—') + '</div></div>' +
+      '<div class="item" data-item="grenade"><div class="it-ic" style="background:#fbbf24"></div><div class="it-n">Grenade</div><div class="it-x">x' + state.grenades + '</div><div class="it-h">G to throw</div></div>' +
+      '<div class="item"><div class="it-ic" style="background:#4ade80"></div><div class="it-n">Ammo box</div><div class="it-x">x' + state.inv.ammo + '</div><div class="it-h">auto-applied</div></div>' +
+      '</div></div>';
+    h += '</div></div>';
+    ui.inventory.innerHTML = h;
+    ui.inventory.querySelectorAll('.wcard').forEach(c => c.addEventListener('click', () => { switchWeapon(c.dataset.w); renderInventory(); }));
+    ui.inventory.querySelectorAll('.att').forEach(c => c.addEventListener('click', () => { setAttachment(c.dataset.att); renderInventory(); }));
+    ui.inventory.querySelectorAll('.item.use').forEach(c => c.addEventListener('click', () => { if (c.dataset.item === 'medkit') useMedkit(); }));
   }
 
   // ---------------------------------------------------------------------------
@@ -500,6 +549,7 @@
     weapon: 'smg', recoil: 0, recoilV: 0, fireTimer: 0, firingHeld: false, semiLatch: false,
     reloading: false, reloadTimer: 0, ads: false, adsAmt: 0, bob: 0,
     grenades: 3, maxGrenades: 5, nadeCD: 0, pressure: 0, view: 'first', moving: false, swayX: 0, swayY: 0,
+    inv: { medkit: 1, ammo: 0 }, invOpen: false, kills: 0,
   };
   const ammo = {};
   WEAPON_ORDER.forEach(k => ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] });
@@ -514,7 +564,7 @@
   const ui = {};
   ['start','over','overStats','hud','wave','score','enemiesLeft','healthFill','healthNum',
    'weaponName','mag','reserve','reloadTag','attachName','grenades','weaponList',
-   'hitmarker','hurt','banner','killfeed','toast','scope','help'].forEach(id => ui[id] = el(id));
+   'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory'].forEach(id => ui[id] = el(id));
 
   function buildWeaponList() {
     ui.weaponList.innerHTML = '';
@@ -667,7 +717,7 @@
     if (e.hp <= 0) {
       e.alive = false; e.dying = e.boss ? 1.2 : 0.6;
       for (const m of e.hitMeshes) { const i = enemyHitMeshes.indexOf(m); if (i >= 0) enemyHitMeshes.splice(i, 1); }
-      state.score += head ? Math.round(e.score * 1.6) : e.score;
+      state.score += head ? Math.round(e.score * 1.6) : e.score; state.kills++;
       sfx('kill'); showHitmarker(true);
       killfeedAdd((head ? '<b>HEADSHOT</b> ' : '') + e.type.toUpperCase() + ' · +' + (head ? Math.round(e.score * 1.6) : e.score));
       spawnDebris(e.grp.position, e.cfg.accent, e.boss ? 24 : 8, 8);
@@ -714,6 +764,12 @@
     a.mag = Math.min(a.mag, magSizeOf(state.weapon));
     toast('Attachment: ' + ATTACH[a.attach].label, 0x60a5fa); updateWeaponHUD(); applyAttachVisual();
   }
+  function setAttachment(at) {
+    const w = WEAPONS[state.weapon], a = ammo[state.weapon];
+    if (!w.attachs.includes(at) || a.attach === at) return;
+    a.attach = at; a.mag = Math.min(a.mag, magSizeOf(state.weapon));
+    updateWeaponHUD(); applyAttachVisual();
+  }
   function applyAttachVisual() {
     const vm = viewmodels[state.weapon], a = ammo[state.weapon];
     vm.userData.sight.visible = a.attach === 'reddot';
@@ -752,6 +808,7 @@
     state.toSpawn = 0; state.waveActive = false; state.waveDelay = 2.0; state.spawnQueue = [];
     state.weapon = 'smg'; state.reloading = false; state.fireTimer = 0; state.recoil = 0; state.recoilV = 0;
     state.ads = false; state.adsAmt = 0; state.grenades = 3; state.view = 'first';
+    state.inv = { medkit: 1, ammo: 0 }; state.kills = 0; if (state.invOpen) toggleInventory(false);
     WEAPON_ORDER.forEach(k => { ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] }; viewmodels[k].visible = (k === 'smg'); });
     applyAttachVisual();
     if (curClip) { curClip.stop(); curClip = null; }   // reset character animation state
@@ -783,6 +840,7 @@
   document.addEventListener('mousemove', (e) => { if (state.phase !== 'playing') return; if (pointerLocked || dragging) applyLook(e.movementX, e.movementY); });
   renderer.domElement.addEventListener('mousedown', (e) => {
     if (state.phase === 'menu' || state.phase === 'dead') { startGame(); return; }
+    if (state.invOpen) return;   // inventory open: clicks belong to the UI, not the gun
     if (e.button === 0) { state.firingHeld = true; if (!pointerLocked) { dragging = true; requestPointer(); } renderer.domElement.focus(); }
     else if (e.button === 2) { state.ads = true; }
   });
@@ -795,12 +853,15 @@
   function onKeyDown(e) {
     keys[e.code] = true;
     if (state.phase === 'playing') {
+      if (e.code === 'Tab') { e.preventDefault(); toggleInventory(); return; }
+      if (e.code === 'Escape' && state.invOpen) { toggleInventory(false); return; }
       if (e.code === 'KeyR') startReload();
       else if (e.code === 'KeyG') throwGrenade();
       else if (e.code === 'KeyT') cycleAttachment();
+      else if (e.code === 'KeyQ') useMedkit();
       else if (e.code === 'KeyH') ui.help.classList.toggle('show');
       else if (e.code === 'KeyV') { state.view = state.view === 'first' ? 'third' : 'first'; toast(state.view === 'third' ? 'Third person' : 'First person', 0x60a5fa); }
-      else if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); if (n >= 1 && n <= 5) switchWeapon(WEAPON_ORDER[n - 1]); }
+      else if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); if (n >= 1 && n <= 5) { switchWeapon(WEAPON_ORDER[n - 1]); if (state.invOpen) renderInventory(); } }
     }
     if (MOVE_CODES.has(e.code)) e.preventDefault();
   }

@@ -45,6 +45,8 @@ the `MODEL` constants near the top of the character section in `src/game.js`.
 | Right click | Aim down sights (ADS / scope zoom) |
 | `R` | Reload |
 | `G` | Throw grenade |
+| `Q` | Use a medkit (heal) |
+| `Tab` | Open inventory (loadout, attachments, items) |
 | `T` | Cycle the current weapon's attachment |
 | `1`–`5` | SMG · Machine Gun · Shotgun · Sniper · Rocket |
 | `V` | Toggle first / third person |
