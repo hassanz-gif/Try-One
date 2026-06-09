@@ -306,17 +306,8 @@
     else if (kind === 'sniper') { box(body,0.1,0.11,1.0,0,0,-0.5); box(dark,0.07,0.06,0.7,0,0.005,-0.95); box(dark,0.06,0.08,0.34,0,0.13,-0.35); box(M(0x0a0a0a,0.5,0.3),0.05,0.05,0.12,0,0.13,-0.18); box(accent,0.1,0.2,0.1,0,-0.14,-0.05); box(body,0.09,0.14,0.3,0,-0.02,0.2); }
     else { box(M(0x3a4250,0.4,0.5),0.16,0.16,0.95,0,0,-0.45); box(dark,0.2,0.2,0.18,0,0,-0.95); box(accent,0.06,0.06,0.4,0,0.12,-0.4); box(M(0xef4444,0.3,0.4),0.05,0.05,0.05,0,0,-0.95); }
 
-    // first-person ROBOT arms gripping the weapon — the Sentinel's gold forearms,
-    // blue cuffs and dark gloves, sized to read clearly in view.
-    const armGold = M(0xc9a233, 0.45, 0.4), armBlue = M(0x1e4fa5, 0.4, 0.4), glove = M(0x202329, 0.3, 0.6);
-    const addArm = (hx, hy, hz, ax, side) => {
-      const fore = new T.Mesh(new T.BoxGeometry(0.17, 0.17, 0.55), armGold); fore.position.set(hx, hy - 0.22, hz + 0.3); fore.rotation.set(ax, side * 0.14, 0); g.add(fore);
-      const cuff = new T.Mesh(new T.BoxGeometry(0.19, 0.19, 0.1), armBlue); cuff.position.set(hx, hy - 0.4, hz + 0.54); cuff.rotation.set(ax, side * 0.14, 0); g.add(cuff);
-      const fist = new T.Mesh(new T.BoxGeometry(0.18, 0.18, 0.2), glove); fist.position.set(hx, hy, hz); g.add(fist);
-    };
-    const foreZ = kind === 'sniper' ? -0.6 : kind === 'shotgun' ? -0.5 : kind === 'rocket' ? -0.55 : -0.42;
-    addArm(0.04, -0.05, 0.06, 0.62, 1);    // trigger arm (right)
-    addArm(-0.05, -0.04, foreZ, 0.42, -1); // support arm (left)
+    // (No stand-in arms — first-person arms need a dedicated arms model; the
+    //  full Sentinel body is shown in third person instead.)
 
     // sight/scope visual driven by attachment
     const sight = box(M(0x101216,0.4,0.4), 0.06, 0.06, 0.16, 0, 0.12, -0.25); sight.visible = false;
