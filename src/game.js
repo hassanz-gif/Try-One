@@ -489,7 +489,7 @@
     score: 0, wave: 0, toSpawn: 0, spawnTimer: 0, spawnQueue: [], waveActive: false, waveDelay: 0,
     weapon: 'smg', recoil: 0, recoilV: 0, fireTimer: 0, firingHeld: false, semiLatch: false,
     reloading: false, reloadTimer: 0, ads: false, adsAmt: 0, bob: 0,
-    grenades: 3, maxGrenades: 5, nadeCD: 0, pressure: 0,
+    grenades: 3, maxGrenades: 5, nadeCD: 0, pressure: 0, view: 'first', moving: false,
   };
   const ammo = {};
   WEAPON_ORDER.forEach(k => ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] });
@@ -729,6 +729,7 @@
     state.phase = 'dead'; ui.hud.classList.remove('on');
     ui.overStats.innerHTML = 'Final score <b>' + state.score + '</b><br>Reached <b>Wave ' + state.wave + '</b>';
     ui.over.classList.add('show'); ui.scope.classList.remove('show');
+    if (modelLoaded) playClip(CLIP.dead);
     if (document.pointerLockElement) document.exitPointerLock();
   }
   function resetGame() {
@@ -741,9 +742,10 @@
     state.hp = state.maxHp = 100; state.lastHurt = -10; state.score = 0; state.wave = 0;
     state.toSpawn = 0; state.waveActive = false; state.waveDelay = 2.0; state.spawnQueue = [];
     state.weapon = 'smg'; state.reloading = false; state.fireTimer = 0; state.recoil = 0; state.recoilV = 0;
-    state.ads = false; state.adsAmt = 0; state.grenades = 3;
+    state.ads = false; state.adsAmt = 0; state.grenades = 3; state.view = 'first';
     WEAPON_ORDER.forEach(k => { ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] }; viewmodels[k].visible = (k === 'smg'); });
     applyAttachVisual();
+    if (curClip) { curClip.stop(); curClip = null; }   // reset character animation state
     player.x = 0; player.z = 26; player.feetY = terrainHeight(0, 26); player.vy = 0; player.grounded = true;
     yaw = Math.PI; pitch = -0.05;
     updateHealthHUD(); updateWeaponHUD(); updateTopHUD();
@@ -787,6 +789,7 @@
       else if (e.code === 'KeyG') throwGrenade();
       else if (e.code === 'KeyT') cycleAttachment();
       else if (e.code === 'KeyH') ui.help.classList.toggle('show');
+      else if (e.code === 'KeyV') { state.view = state.view === 'first' ? 'third' : 'first'; toast(state.view === 'third' ? 'Third person' : 'First person', 0x60a5fa); }
       else if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); if (n >= 1 && n <= 5) switchWeapon(WEAPON_ORDER[n - 1]); }
     }
     if (MOVE_CODES.has(e.code)) e.preventDefault();
@@ -819,9 +822,16 @@
     const gh = groundHeight(player.x, player.z, player.feetY);
     if (player.feetY <= gh) { player.feetY = gh; player.vy = 0; player.grounded = true; } else player.grounded = false;
 
+    state.moving = moving;
     if (moving && player.grounded) state.bob += dt * (sprinting ? 14 : 9);
     const bobY = (moving && player.grounded) ? Math.sin(state.bob) * 0.05 : 0;
-    camera.position.set(player.x, player.feetY + EYE_H + bobY, player.z);
+    if (state.view === 'third') {
+      // over-the-shoulder camera placed behind the player (forward is -sin,-cos → behind is +)
+      const hy = player.feetY + EYE_H;
+      camera.position.set(player.x + Math.sin(yaw) * MODEL.tpDist, hy + MODEL.tpUp, player.z + Math.cos(yaw) * MODEL.tpDist);
+    } else {
+      camera.position.set(player.x, player.feetY + EYE_H + bobY, player.z);
+    }
 
     state.recoil += state.recoilV; state.recoilV *= 0.82; state.recoil *= 0.80;
 
@@ -975,16 +985,68 @@
   // ---------------------------------------------------------------------------
   // Main loop
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Player character model — Golden Sentinel (GLB): menu showcase + 1st/3rd person
+  // ---------------------------------------------------------------------------
+  const SENTINEL_URL = 'assets/sentinel.glb';
+  const MODEL = { height: 3.6, yawOffset: Math.PI, tpDist: 6.5, tpUp: 1.2, fpBody: true };
+  const CLIP = { idle: 'Idle_02', walk: 'Walking', run: 'Running', dead: 'Dead' };
+  let playerModel = null, playerMixer = null, clips = {}, curClip = null, modelLoaded = false, headBone = null, headBaseScale = null, FOOT_LIFT = 0;
+
+  function loadCharacter() {
+    if (typeof THREE.GLTFLoader !== 'function') { console.warn('[sentinel] GLTFLoader unavailable'); return; }
+    new THREE.GLTFLoader().load(SENTINEL_URL, (gltf) => {
+      const m = gltf.scene;
+      m.traverse((o) => {
+        if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
+        if (!headBone && o.name && /head/i.test(o.name)) headBone = o;
+      });
+      // scale to target height; record how far to lift so the feet sit on the ground
+      let box = new T.Box3().setFromObject(m); const size = new T.Vector3(); box.getSize(size);
+      m.scale.setScalar(MODEL.height / (size.y || 1));
+      box = new T.Box3().setFromObject(m); FOOT_LIFT = -box.min.y;
+      if (headBone) headBaseScale = headBone.scale.clone();
+      playerModel = m; m.visible = false; scene.add(m);
+      playerMixer = new T.AnimationMixer(m);
+      gltf.animations.forEach((c) => { clips[c.name] = playerMixer.clipAction(c); });
+      modelLoaded = true;
+      if (state.phase !== 'playing') placeMenuModel();
+      console.log('[sentinel] loaded — clips:', gltf.animations.map(a => a.name).join(', '));
+    }, undefined, (e) => console.warn('[sentinel] load failed — serve over http(s) to see the character; file:// blocks model loads.', e && (e.message || e)));
+  }
+  function playClip(name, fade = 0.25) { const a = clips[name]; if (!a || a === curClip) return; a.reset().fadeIn(fade).play(); if (curClip) curClip.fadeOut(fade); curClip = a; }
+  function setHead(show) { if (!headBone || !headBaseScale) return; show ? headBone.scale.copy(headBaseScale) : headBone.scale.set(1e-4, 1e-4, 1e-4); }
+  function placeMenuModel() {
+    if (!playerModel) return;
+    playerModel.visible = true; setHead(true);
+    const gx = 0, gz = 30; playerModel.position.set(gx, terrainHeight(gx, gz) + FOOT_LIFT, gz);
+    playerModel.rotation.set(0, 0, 0); playClip(CLIP.idle, 0);
+  }
+  function updateCharacter(dt) {
+    if (playerMixer) playerMixer.update(dt);
+    if (!modelLoaded) return;
+    if (state.phase !== 'playing') { playerModel.visible = true; setHead(true); playerModel.rotation.y += dt * 0.5; playClip(CLIP.idle); return; }
+    const thirdP = state.view === 'third';
+    playerModel.visible = thirdP || MODEL.fpBody;
+    playerModel.position.set(player.x, player.feetY + FOOT_LIFT, player.z);
+    playerModel.rotation.y = yaw + MODEL.yawOffset;
+    setHead(thirdP);                              // hide own head in first person
+    viewmodels[state.weapon].visible = !thirdP;   // hide held-weapon viewmodel in third person
+    if (state.moving && sprinting) playClip(CLIP.run);
+    else if (state.moving) playClip(CLIP.walk);
+    else playClip(CLIP.idle);
+  }
+
   function tick() {
     const dt = Math.min(0.05, clock.getDelta());
     if (state.phase === 'playing') {
       updatePlayer(dt); updateFiring(dt); updateWeaponVisual(dt); updateEnemies(dt);
-      updateProjectiles(dt); updatePickups(dt); updateParticles(dt); updateWaves(dt);
+      updateProjectiles(dt); updatePickups(dt); updateParticles(dt); updateWaves(dt); updateCharacter(dt);
       sun.target.position.set(player.x, 0, player.z); sun.position.set(player.x - 60, 90, player.z + 40);
       if (hitTimer > 0) { hitTimer -= dt; if (hitTimer <= 0) ui.hitmarker.style.opacity = '0'; }
       if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) ui.toast.style.opacity = '0'; }
       updateWeaponHUD();
-    } else { updateProjectiles(dt); updateParticles(dt); }
+    } else { updateProjectiles(dt); updateParticles(dt); updateCharacter(dt); }
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   }
@@ -993,10 +1055,11 @@
   camera.position.set(0, 14, 46); camera.lookAt(0, 4, 0);
   buildWeaponList(); applyAttachVisual();
   updateHealthHUD(); updateWeaponHUD(); updateTopHUD();
+  loadCharacter();
   tick();
 
   window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
   // expose a tiny hook for automated tests (no effect in normal play)
-  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster };
+  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster, get modelLoaded() { return modelLoaded; }, get playerModel() { return playerModel; } };
 })();

@@ -6,9 +6,32 @@ Hold a sci-fi ruin against escalating waves of futuristic hostiles.
 
 ## Play
 
-Open **`index.html`** in any modern browser (Chrome/Edge/Firefox/Safari) — just
-double-click it. It's a **single self-contained file** with Three.js inlined, so there's
-nothing to install and it runs fully offline. No web server needed.
+Open **`index.html`** in any modern browser — just double-click it. The game itself is
+self-contained and runs offline.
+
+**To see your 3D character (the Golden Sentinel), run it from a local server** instead of
+double-clicking, because browsers block loading the `.glb` model over `file://`:
+
+```bash
+# from the project folder
+python3 -m http.server 8000
+# then open http://localhost:8000 in your browser
+```
+
+If you just double-click `index.html`, the game still plays fine — it simply skips the
+character model (you'll see a console note). The local server is only needed to load
+`assets/sentinel.glb`.
+
+## Your character — the Golden Sentinel
+
+A rigged, animated GLB (made in Meshy, ~20k tris, 8 clips) is wired in as your character:
+- **Menu showcase** — he stands on the deploy screen, idling.
+- **First / third person** — press **`V`** to toggle. In first person you see your own
+  body/arms; in third person the camera pulls behind him and he walks/runs/idles.
+
+Drop a different model at `assets/sentinel.glb` (rigged, with clips named like
+`Idle_02` / `Walking` / `Running` / `Dead`) to swap characters. Scale/facing are tuned by
+the `MODEL` constants near the top of the character section in `src/game.js`.
 
 ## Controls
 
@@ -24,6 +47,7 @@ nothing to install and it runs fully offline. No web server needed.
 | `G` | Throw grenade |
 | `T` | Cycle the current weapon's attachment |
 | `1`–`5` | SMG · Machine Gun · Shotgun · Sniper · Rocket |
+| `V` | Toggle first / third person |
 | `H` | Toggle help |
 | `Esc` | Release the mouse cursor |
 
@@ -59,9 +83,12 @@ This is built from small source files into one self-contained `index.html`:
 index.html        Generated single-file build you download & play (Three.js + game inlined)
 build.js          Assembles index.html from src/ (node build.js)
 src/
-  game.js         The game (scene, terrain, weapons, enemies, loot, HUD, loop)
-  shell.html      HTML + CSS + HUD markup (with <!--THREE--> / <!--GAME--> slots)
+  game.js         The game (scene, terrain, weapons, enemies, loot, character, loop)
+  shell.html      HTML + CSS + HUD markup (with inline-script slots)
   three.min.js    Vendored Three.js r128 (build input, inlined into index.html)
+  GLTFLoader.js   Vendored r128 GLB loader (build input, inlined into index.html)
+assets/
+  sentinel.glb    The Golden Sentinel character model (loaded at runtime, not inlined)
 README.md
 ```
 
