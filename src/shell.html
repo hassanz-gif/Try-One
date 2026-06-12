@@ -10,6 +10,42 @@
   #app { position:absolute; inset:0; }
   canvas { display:block; }
 
+  /* Menu system */
+  #menu { position:absolute; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at center,rgba(10,14,22,.55),rgba(2,4,8,.92)); }
+  #menu.hidden { display:none; }
+  .mscreen { display:none; text-align:center; max-width:900px; width:94vw; }
+  .mscreen.show { display:block; }
+  .mtitle { font-size:48px; font-weight:800; letter-spacing:.08em; color:#fff; text-shadow:0 3px 0 #155e3a,0 0 30px rgba(74,222,128,.35); margin-bottom:6px; }
+  .msub { color:var(--dim); font-size:13px; margin-bottom:30px; }
+  .mbtn { display:block; width:280px; margin:10px auto; padding:13px 0; background:rgba(15,18,24,.85); border:1px solid rgba(255,255,255,.16);
+    color:var(--ink); font-family:inherit; font-size:13px; letter-spacing:.2em; text-transform:uppercase; border-radius:5px; cursor:pointer; }
+  .mbtn:hover { border-color:var(--accent); color:var(--accent); }
+  .mbtn.primary { background:var(--accent); color:#06210f; font-weight:700; border-color:var(--accent); }
+  .mbtn.primary:hover { filter:brightness(1.12); color:#06210f; }
+  .mhead { font-size:12px; letter-spacing:.3em; color:var(--cyan); text-transform:uppercase; margin-bottom:24px; }
+  .cardrow { display:flex; gap:14px; justify-content:center; margin-bottom:26px; flex-wrap:wrap; }
+  .mcard { width:236px; text-align:left; background:rgba(15,18,24,.88); border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:18px; cursor:pointer; transition:.15s; }
+  .mcard:hover { border-color:var(--cyan); transform:translateY(-3px); }
+  .mcard.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent),0 8px 30px rgba(74,222,128,.18); }
+  .mcard h3 { font-size:16px; color:#fff; margin:4px 0 6px; }
+  .mcard .tag { font-size:10px; letter-spacing:.18em; color:var(--warn); text-transform:uppercase; }
+  .mcard p { font-size:11px; color:var(--dim); line-height:1.5; }
+  .mcard .stat { font-size:10px; color:var(--accent); margin-top:8px; letter-spacing:.06em; }
+  .mback { margin-top:8px; background:none; border:none; color:var(--dim); font-family:inherit; font-size:11px; letter-spacing:.18em; text-transform:uppercase; cursor:pointer; }
+  .mback:hover { color:var(--ink); }
+  .bestline { margin-top:26px; font-size:11px; color:var(--dim); letter-spacing:.06em; line-height:1.8; }
+  .bestline b { color:var(--warn); }
+  .setrow { display:grid; grid-template-columns:150px 1fr 56px; gap:14px; align-items:center; width:440px; margin:14px auto; text-align:left; }
+  .setrow label { font-size:11px; letter-spacing:.14em; color:var(--dim); text-transform:uppercase; }
+  .setrow input[type=range] { width:100%; accent-color:#4ade80; }
+  .setrow .sval { font-size:12px; color:var(--accent); text-align:right; }
+  .setrow.chk { grid-template-columns:150px auto; }
+
+  /* Pause */
+  #pause { position:absolute; inset:0; z-index:28; display:none; align-items:center; justify-content:center; background:rgba(5,8,12,.72); backdrop-filter:blur(4px); }
+  #pause.show { display:flex; }
+
   /* Overlays */
   #start,#over { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:30; cursor:pointer; transition:opacity .35s ease; }
   #start { background:radial-gradient(ellipse at center,rgba(10,14,22,.82),rgba(0,0,0,.97)); }
@@ -183,27 +219,80 @@
 
 <div id="inventory"></div>
 
-<div id="start">
-  <div class="card">
-    <div class="eyebrow">Sci-Fi · Wave Survival</div>
-    <h1>BLOX&nbsp;FORCES</h1>
-    <div class="sub">Hold the ruins against escalating waves of sci-fi hostiles. 5 weapons, attachments, grenades. Aim for the head.</div>
-    <div class="cta">Click to deploy</div>
-    <div class="controls">
+<div id="menu">
+  <div class="mscreen show" id="m-main">
+    <div class="mhead">Sci-Fi · Wave Survival FPS</div>
+    <div class="mtitle">BLOX&nbsp;FORCES</div>
+    <div class="msub">Hold the ruins. Clear the waves. Upgrade the arsenal.</div>
+    <button class="mbtn primary" id="btnPlay">Start Game</button>
+    <button class="mbtn" id="btnSettings">Settings</button>
+    <button class="mbtn" id="btnHowto">How to Play</button>
+    <div class="bestline" id="bestLine"></div>
+  </div>
+
+  <div class="mscreen" id="m-mode">
+    <div class="mhead">Select Gamemode</div>
+    <div class="cardrow">
+      <div class="mcard" id="mode-survival"><span class="tag">Classic</span><h3>Wave Survival</h3><p>Escalating waves of hostiles, a boss every 5th wave. How long can you hold?</p><div class="stat" id="best-survival"></div></div>
+      <div class="mcard" id="mode-horde"><span class="tag">Endless</span><h3>Endless Horde</h3><p>The swarm never stops and only grows. A pure score chase against the tide.</p><div class="stat" id="best-horde"></div></div>
+      <div class="mcard" id="mode-rush"><span class="tag">Time Attack</span><h3>Target Rush</h3><p>Eliminate 30 hostiles as fast as you can. Every second on the clock counts.</p><div class="stat" id="best-rush"></div></div>
+    </div>
+    <button class="mback" id="modeBack">← Back</button>
+  </div>
+
+  <div class="mscreen" id="m-char">
+    <div class="mhead">Select Character</div>
+    <div class="cardrow">
+      <div class="mcard sel" id="char-sentinel"><span class="tag">Balanced</span><h3>Golden Sentinel</h3><p>Imported combat mech. All-round plating and mobility.</p><div class="stat">HP 100 · Speed 100%</div></div>
+      <div class="mcard" id="char-trooper"><span class="tag">Scout</span><h3>Blox Trooper</h3><p>Light frame. Moves fast, can't take a beating.</p><div class="stat">HP 80 · Speed 118%</div></div>
+      <div class="mcard" id="char-vanguard"><span class="tag">Heavy</span><h3>Night Vanguard</h3><p>Armored juggernaut. Slow, but very hard to put down.</p><div class="stat">HP 135 · Speed 88%</div></div>
+    </div>
+    <button class="mbtn primary" id="btnDeploy">Deploy</button>
+    <button class="mback" id="charBack">← Back</button>
+  </div>
+
+  <div class="mscreen" id="m-settings">
+    <div class="mhead">Settings</div>
+    <div class="setrow"><label>Mouse sensitivity</label><input type="range" id="setSens" min="0.3" max="2.5" step="0.05"><span class="sval" id="setSensV"></span></div>
+    <div class="setrow"><label>Field of view</label><input type="range" id="setFov" min="60" max="110" step="1"><span class="sval" id="setFovV"></span></div>
+    <div class="setrow"><label>SFX volume</label><input type="range" id="setSfx" min="0" max="1" step="0.05"><span class="sval" id="setSfxV"></span></div>
+    <div class="setrow"><label>Music volume</label><input type="range" id="setMusic" min="0" max="1" step="0.05"><span class="sval" id="setMusicV"></span></div>
+    <div class="setrow chk"><label>Invert Y</label><input type="checkbox" id="setInvert"></div>
+    <button class="mback" id="settingsBack">← Back</button>
+  </div>
+
+  <div class="mscreen" id="m-help">
+    <div class="mhead">How to Play</div>
+    <div class="controls" style="display:inline-grid; margin-bottom:10px;">
       <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move · <kbd>Shift</kbd> Sprint · <kbd>Space</kbd> Jump</span>
       <span><kbd>Mouse</kbd></span><span><kbd>L</kbd> Fire · <kbd>R-Click</kbd> Aim · <kbd>R</kbd> Reload</span>
       <span><kbd>1</kbd>–<kbd>5</kbd></span><span>SMG · MG · Shotgun · Sniper · Rocket</span>
-      <span><kbd>G</kbd></span><span>Grenade · <kbd>T</kbd> Cycle attachment · <kbd>H</kbd> Help</span>
+      <span><kbd>G</kbd></span><span>Grenade · <kbd>Q</kbd> Medkit · <kbd>E</kbd> Open chest</span>
+      <span><kbd>Tab</kbd>/<kbd>I</kbd></span><span>Inventory · <kbd>V</kbd> 1st/3rd person · <kbd>Esc</kbd> Pause</span>
+    </div>
+    <br><button class="mback" id="helpBack">← Back</button>
+  </div>
+</div>
+
+<div id="pause">
+  <div class="card">
+    <div class="eyebrow">Paused</div>
+    <h1 style="font-size:26px;">STAND&nbsp;BY</h1>
+    <div style="margin-top:18px;">
+      <button class="mbtn primary" id="btnResume">Resume</button>
+      <button class="mbtn" id="btnPauseSettings">Settings</button>
+      <button class="mbtn" id="btnQuit">Quit to Menu</button>
     </div>
   </div>
 </div>
 
 <div id="over">
   <div class="card">
-    <div class="eyebrow" style="color:var(--danger)">You were overrun</div>
-    <h1>GAME OVER</h1>
+    <div class="eyebrow" id="overEyebrow" style="color:var(--danger)">You were overrun</div>
+    <h1 id="overTitle">GAME OVER</h1>
     <div class="stats" id="overStats"></div>
-    <div class="cta">Click to redeploy</div>
+    <button class="mbtn primary" id="btnRedeploy">Redeploy</button>
+    <button class="mbtn" id="btnMenu">Main Menu</button>
   </div>
 </div>
 

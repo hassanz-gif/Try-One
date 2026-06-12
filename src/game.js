@@ -16,6 +16,17 @@
   const smooth = (t) => t * t * (3 - 2 * t);
 
   // ---------------------------------------------------------------------------
+  // Persistence: settings + best records (localStorage)
+  // ---------------------------------------------------------------------------
+  const SAVE_KEY = 'bloxforces_v1';
+  function loadSaveObj() { try { if (typeof localStorage === 'undefined') return {}; return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; } }
+  const _save = loadSaveObj();
+  const settings = Object.assign({ sens: 1, fov: 80, sfx: 1, music: 0.5, invertY: false }, _save.settings);
+  const records = Object.assign({ survival: { score: 0, wave: 0 }, horde: { score: 0, wave: 0 }, rush: { time: 0 } }, _save.records);
+  function persist() { try { if (typeof localStorage !== 'undefined') localStorage.setItem(SAVE_KEY, JSON.stringify({ settings, records })); } catch (e) {} }
+  function fmtTime(s) { const m = Math.floor(s / 60), r = s - m * 60; return m + ':' + (r < 10 ? '0' : '') + r.toFixed(1); }
+
+  // ---------------------------------------------------------------------------
   // Renderer / scene / camera
   // ---------------------------------------------------------------------------
   const app = document.getElementById('app');
@@ -33,8 +44,7 @@
   scene.background = new T.Color(0x9ec9ef);
   scene.fog = new T.Fog(0x9ec9ef, 90, 230);
 
-  const BASE_FOV = 80;
-  const camera = new T.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.05, 600);
+  const camera = new T.PerspectiveCamera(settings.fov, window.innerWidth / window.innerHeight, 0.05, 600);
   scene.add(camera);
 
   // ---------------------------------------------------------------------------
@@ -231,6 +241,7 @@
   let actx = null;
   function audio() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return actx; }
   function sfx(type, gain = 1) {
+    gain *= settings.sfx; if (gain <= 0.001) return;
     const ac = audio(); if (!ac) return;
     const t = ac.currentTime;
     const noise = (dur, lp, vol) => {
@@ -260,6 +271,27 @@
     else if (type === 'pickup') tone(660, 1100, 0.12, 0.14);
     else if (type === 'plasma') tone(700, 300, 0.14, 0.12, 'sawtooth');
     else if (type === 'throw') tone(400, 600, 0.12, 0.1);
+  }
+
+  // Ambient music: a slow generative pad (no assets). Volume via settings.music.
+  let musicTimer = null, musicGain = null;
+  function startMusic() {
+    if (musicTimer || typeof setInterval !== 'function') return;
+    const ac = audio(); if (!ac) return;
+    musicGain = ac.createGain(); musicGain.gain.value = settings.music * 0.06; musicGain.connect(ac.destination);
+    const scale = [0, 3, 5, 7, 10, 12, 15];
+    musicTimer = setInterval(() => {
+      if (!actx || settings.music <= 0.001) return;
+      const t = actx.currentTime;
+      const semi = scale[(Math.random() * scale.length) | 0];
+      const base = 110 * Math.pow(2, semi / 12);
+      [[base, 'triangle', 1], [base / 2, 'sine', 0.6]].forEach(([f, ty, v]) => {
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = ty; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 3.4);
+        o.connect(g); g.connect(musicGain); o.start(t); o.stop(t + 3.5);
+      });
+    }, 1800);
   }
 
   // ---------------------------------------------------------------------------
@@ -543,6 +575,21 @@
     reloading: false, reloadTimer: 0, ads: false, adsAmt: 0, bob: 0,
     grenades: 3, maxGrenades: 5, nadeCD: 0, pressure: 0, view: 'first', moving: false, swayX: 0, swayY: 0,
     inv: { medkit: 1, ammo: 0 }, invOpen: false, kills: 0,
+    mode: 'survival', character: 'sentinel', paused: false, modeTime: 0, spawned: 0, speedMul: 1,
+  };
+
+  // ---------------------------------------------------------------------------
+  // Gamemodes & playable characters
+  // ---------------------------------------------------------------------------
+  const MODES = {
+    survival: { name: 'Wave Survival', desc: 'Escalating waves, boss every 5th.' },
+    horde:    { name: 'Endless Horde', desc: 'Continuous swarm, pure score chase.' },
+    rush:     { name: 'Target Rush', desc: 'Eliminate the target count, fast.', target: 30 },
+  };
+  const CHARACTERS = {
+    sentinel: { name: 'Golden Sentinel', hp: 100, speed: 1.0 },
+    trooper:  { name: 'Blox Trooper',    hp: 80,  speed: 1.18, colors: { skin: 0xffd33a, shirt: 0x3b82f6, pants: 0x2f9e44 } },
+    vanguard: { name: 'Night Vanguard',  hp: 135, speed: 0.88, colors: { skin: 0x8a93a5, shirt: 0x23272f, pants: 0x111318 } },
   };
   const ammo = {};
   WEAPON_ORDER.forEach(k => ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] });
@@ -555,7 +602,7 @@
   // ---------------------------------------------------------------------------
   const el = (id) => document.getElementById(id);
   const ui = {};
-  ['start','over','overStats','hud','wave','score','enemiesLeft','healthFill','healthNum',
+  ['over','overStats','hud','wave','score','enemiesLeft','healthFill','healthNum',
    'weaponName','mag','reserve','reloadTag','attachName','grenades','weaponList',
    'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory','invBtn'].forEach(id => ui[id] = el(id));
 
@@ -583,7 +630,9 @@
     ui.healthNum.textContent = Math.max(0, Math.round(state.hp));
   }
   function updateTopHUD() {
-    ui.wave.textContent = 'WAVE ' + state.wave;
+    if (state.mode === 'horde') ui.wave.textContent = 'HORDE · THREAT ' + Math.max(1, state.wave);
+    else if (state.mode === 'rush') ui.wave.textContent = 'RUSH ' + Math.min(state.kills, MODES.rush.target) + ' / ' + MODES.rush.target + ' · ' + fmtTime(state.modeTime);
+    else ui.wave.textContent = 'WAVE ' + state.wave;
     ui.score.textContent = state.score;
     const left = enemies.filter(e => e.alive).length + state.toSpawn;
     ui.enemiesLeft.textContent = left + (left === 1 ? ' hostile' : ' hostiles');
@@ -598,17 +647,16 @@
   // ---------------------------------------------------------------------------
   // Waves (difficulty ramps)
   // ---------------------------------------------------------------------------
+  function rollType(n) {
+    const r = Math.random();
+    if (n <= 2) return r < 0.55 ? 'crawler' : 'skitter';
+    if (n <= 4) return r < 0.4 ? 'crawler' : r < 0.7 ? 'skitter' : r < 0.88 ? 'brute' : 'drone';
+    return r < 0.3 ? 'crawler' : r < 0.55 ? 'skitter' : r < 0.75 ? 'drone' : 'brute';
+  }
   function buildSpawnQueue(n) {
     const q = [];
     const count = 5 + Math.floor(n * 2.2);
-    for (let i = 0; i < count; i++) {
-      let t;
-      const r = Math.random();
-      if (n <= 2) t = r < 0.55 ? 'crawler' : 'skitter';
-      else if (n <= 4) t = r < 0.4 ? 'crawler' : r < 0.7 ? 'skitter' : r < 0.88 ? 'brute' : 'drone';
-      else t = r < 0.3 ? 'crawler' : r < 0.55 ? 'skitter' : r < 0.75 ? 'drone' : 'brute';
-      q.push(t);
-    }
+    for (let i = 0; i < count; i++) q.push(rollType(n));
     if (n % 5 === 0) q.push('boss');         // boss every 5th wave
     if (n % 5 === 0 && n >= 10) q.push('boss');
     return q;
@@ -623,6 +671,41 @@
     updateTopHUD();
   }
   function updateWaves(dt) {
+    // --- Endless Horde: continuous spawning, difficulty tiers by time ---
+    if (state.mode === 'horde') {
+      state.modeTime += dt;
+      const tier = 1 + Math.floor(state.modeTime / 40);
+      if (tier !== state.wave) { state.wave = tier; if (tier > 1) banner('THREAT LEVEL ' + tier, 'the swarm intensifies'); updateTopHUD(); }
+      state.spawnTimer -= dt;
+      const alive = enemies.filter(e => e.alive).length;
+      const cap = clamp(6 + tier * 2, 6, 22);
+      if (state.spawnTimer <= 0 && alive < cap) {
+        makeEnemy(Math.random() < 0.04 && tier >= 3 ? 'boss' : rollType(tier), tier);
+        state.spawnTimer = Math.max(0.3, 1.1 - tier * 0.05);
+        updateTopHUD();
+      }
+      state.pressure = 0;
+      return;
+    }
+    // --- Target Rush: fixed kill target, beat the clock ---
+    if (state.mode === 'rush') {
+      state.modeTime += dt;
+      const target = MODES.rush.target;
+      if (state.kills >= target) { victory(); return; }
+      const alive = enemies.filter(e => e.alive).length;
+      if (state.spawned < target + 8 && alive < 8) {
+        state.spawnTimer -= dt;
+        if (state.spawnTimer <= 0) {
+          makeEnemy(rollType(2 + Math.floor(state.kills / 8)), 2);
+          state.spawned++; state.spawnTimer = 0.5;
+        }
+      }
+      // stragglers close in so the clock can always be beaten
+      state.pressure = (alive > 0 && alive <= 3) ? Math.min(1, state.pressure + dt * 0.1) : 0;
+      updateTopHUD();   // live timer
+      return;
+    }
+    // --- Wave Survival ---
     // "cleanup pressure": when a wave's spawns are exhausted and only a handful
     // of stragglers remain, ramp pressure so evasive flyers close in — this
     // guarantees a wave can always be finished.
@@ -786,8 +869,37 @@
   }
   function gameOver() {
     state.phase = 'dead'; ui.hud.classList.remove('on');
-    ui.overStats.innerHTML = 'Final score <b>' + state.score + '</b><br>Reached <b>Wave ' + state.wave + '</b>';
+    if (state.invOpen) toggleInventory(false);
+    // record bests (score/wave modes only; rush records on victory)
+    let nb = false;
+    const rec = records[state.mode];
+    if (rec && state.mode !== 'rush') {
+      if (state.score > rec.score) { rec.score = state.score; nb = true; }
+      if (state.wave > rec.wave) { rec.wave = state.wave; nb = true; }
+      if (nb) persist();
+    }
+    const eb = el('overEyebrow'), ti = el('overTitle');
+    if (eb) { eb.textContent = 'You were overrun'; eb.style.color = 'var(--danger)'; }
+    if (ti) { ti.textContent = 'GAME OVER'; ti.style.color = 'var(--danger)'; }
+    ui.overStats.innerHTML = 'Final score <b>' + state.score + '</b>' + (nb ? ' — <b style="color:var(--warn)">NEW BEST</b>' : '') +
+      '<br>' + (state.mode === 'rush' ? ('Kills <b>' + state.kills + ' / ' + MODES.rush.target + '</b>') : ('Reached <b>Wave ' + state.wave + '</b>')) +
+      '<br><span style="color:var(--dim);font-size:12px">' + MODES[state.mode].name + ' · ' + CHARACTERS[state.character].name + '</span>';
     ui.over.classList.add('show'); ui.scope.classList.remove('show');
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  function victory() {
+    state.phase = 'dead'; ui.hud.classList.remove('on');
+    if (state.invOpen) toggleInventory(false);
+    const t = state.modeTime;
+    const nb = !records.rush.time || t < records.rush.time;
+    if (nb) { records.rush.time = t; persist(); }
+    const eb = el('overEyebrow'), ti = el('overTitle');
+    if (eb) { eb.textContent = 'Mission complete'; eb.style.color = 'var(--accent)'; }
+    if (ti) { ti.textContent = 'RUSH CLEARED'; ti.style.color = 'var(--accent)'; }
+    ui.overStats.innerHTML = 'Time <b>' + fmtTime(t) + '</b>' + (nb ? ' — <b style="color:var(--warn)">NEW BEST</b>' : '') +
+      '<br>Score <b>' + state.score + '</b><br><span style="color:var(--dim);font-size:12px">' + MODES.rush.name + ' · ' + CHARACTERS[state.character].name + '</span>';
+    ui.over.classList.add('show'); ui.scope.classList.remove('show');
+    sfx('kill', 1.5);
     if (document.pointerLockElement) document.exitPointerLock();
   }
   function resetGame() {
@@ -797,7 +909,11 @@
     for (const pr of projectiles) scene.remove(pr.mesh); projectiles.length = 0;
     for (const pk of pickups) scene.remove(pk.grp); pickups.length = 0;
 
-    state.hp = state.maxHp = 100; state.lastHurt = -10; state.score = 0; state.wave = 0;
+    const ch = CHARACTERS[state.character] || CHARACTERS.sentinel;
+    state.maxHp = ch.hp; state.hp = ch.hp; state.speedMul = ch.speed;
+    state.lastHurt = -10; state.score = 0; state.wave = 0;
+    state.modeTime = 0; state.spawned = 0; state.paused = false;
+    const pauseEl = el('pause'); if (pauseEl) pauseEl.classList.remove('show');
     state.toSpawn = 0; state.waveActive = false; state.waveDelay = 2.0; state.spawnQueue = [];
     state.weapon = 'smg'; state.reloading = false; state.fireTimer = 0; state.recoil = 0; state.recoilV = 0;
     state.ads = false; state.adsAmt = 0; state.grenades = 3; state.view = 'first';
@@ -810,10 +926,12 @@
     updateHealthHUD(); updateWeaponHUD(); updateTopHUD();
   }
   function startGame() {
-    audio(); resetGame(); state.phase = 'playing';
-    ui.start.classList.add('hidden'); ui.over.classList.remove('show'); ui.hud.classList.add('on');
+    audio(); startMusic(); resetGame(); state.phase = 'playing';
+    showMenu(false); ui.over.classList.remove('show'); ui.hud.classList.add('on');
     requestPointer(); renderer.domElement.focus();
-    banner('SURVIVE', 'hostiles inbound'); state.waveDelay = 2.5;
+    if (state.mode === 'horde') banner('ENDLESS HORDE', 'they never stop coming');
+    else if (state.mode === 'rush') banner('TARGET RUSH', MODES.rush.target + ' hostiles · beat the clock');
+    else { banner('SURVIVE', 'hostiles inbound'); state.waveDelay = 2.5; }
   }
 
   // ---------------------------------------------------------------------------
@@ -823,32 +941,35 @@
   let pointerLocked = false, dragging = false, sprinting = false;
   renderer.domElement.tabIndex = 0; renderer.domElement.style.outline = 'none';
   function requestPointer() { const p = renderer.domElement.requestPointerLock && renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); }
-  document.addEventListener('pointerlockchange', () => { pointerLocked = document.pointerLockElement === renderer.domElement; });
+  document.addEventListener('pointerlockchange', () => {
+    pointerLocked = document.pointerLockElement === renderer.domElement;
+    // Esc under pointer-lock isn't delivered as a keydown — losing the lock
+    // mid-game (without the inventory open) means the player hit Esc: pause.
+    if (!pointerLocked && state.phase === 'playing' && !state.invOpen && !state.paused) openPause();
+  });
   function applyLook(dx, dy) {
-    const sens = 0.0022 * (state.ads ? adsZoom() : 1);
-    yaw -= dx * sens; pitch -= dy * sens;
+    const sens = 0.0022 * settings.sens * (state.ads ? adsZoom() : 1);
+    yaw -= dx * sens; pitch -= dy * sens * (settings.invertY ? -1 : 1);
     const lim = Math.PI / 2 - 0.04; pitch = clamp(pitch, -lim, lim);
     state.swayX += dx; state.swayY += dy;   // feed weapon sway
   }
   document.addEventListener('mousemove', (e) => { if (state.phase !== 'playing') return; if (pointerLocked || dragging) applyLook(e.movementX, e.movementY); });
   renderer.domElement.addEventListener('mousedown', (e) => {
-    if (state.phase === 'menu' || state.phase === 'dead') { startGame(); return; }
-    if (state.invOpen) return;   // inventory open: clicks belong to the UI, not the gun
+    if (state.phase !== 'playing' || state.paused || state.invOpen) return;   // menus/pause/inventory own the clicks
     if (e.button === 0) { state.firingHeld = true; if (!pointerLocked) { dragging = true; requestPointer(); } renderer.domElement.focus(); }
     else if (e.button === 2) { state.ads = true; }
   });
   window.addEventListener('mouseup', (e) => { if (e.button === 0) { state.firingHeld = false; dragging = false; } else if (e.button === 2) state.ads = false; });
-  ui.start.addEventListener('click', () => { if (state.phase === 'menu') startGame(); });
-  ui.over.addEventListener('click', () => { if (state.phase === 'dead') startGame(); });
-  if (ui.invBtn) ui.invBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.phase === 'playing') toggleInventory(); });
+  if (ui.invBtn) ui.invBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.phase === 'playing' && !state.paused) toggleInventory(); });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const MOVE_CODES = new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space']);
   function onKeyDown(e) {
     keys[e.code] = true;
     if (state.phase === 'playing') {
+      if (e.code === 'Escape') { if (state.invOpen) toggleInventory(false); else if (state.paused) resumeGame(); else openPause(); return; }
+      if (state.paused) { if (MOVE_CODES.has(e.code)) e.preventDefault(); return; }
       if (e.code === 'Tab' || e.code === 'KeyI') { e.preventDefault(); toggleInventory(); return; }
-      if (e.code === 'Escape' && state.invOpen) { toggleInventory(false); return; }
       if (e.code === 'KeyR') startReload();
       else if (e.code === 'KeyG') throwGrenade();
       else if (e.code === 'KeyT') cycleAttachment();
@@ -872,7 +993,7 @@
   function updatePlayer(dt) {
     const euler = new T.Euler(pitch + state.recoil, yaw, 0, 'YXZ'); camera.quaternion.setFromEuler(euler);
     sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) && (keys['KeyW'] || keys['ArrowUp']) && !state.ads;
-    const speed = sprinting ? SPRINT : (state.ads ? WALK * 0.6 : WALK);
+    const speed = (sprinting ? SPRINT : (state.ads ? WALK * 0.6 : WALK)) * (state.speedMul || 1);
     const fwdX = -Math.sin(yaw), fwdZ = -Math.cos(yaw), rX = -fwdZ, rZ = fwdX;
     let mx = 0, mz = 0;
     if (keys['KeyW'] || keys['ArrowUp']) { mx += fwdX; mz += fwdZ; }
@@ -902,7 +1023,7 @@
 
     // ADS fov + scope overlay
     state.adsAmt = lerp(state.adsAmt, state.ads ? 1 : 0, Math.min(1, dt * 12));
-    const targetFov = lerp(BASE_FOV, BASE_FOV * adsZoom(), state.adsAmt);
+    const targetFov = lerp(settings.fov, settings.fov * adsZoom(), state.adsAmt);
     if (Math.abs(camera.fov - targetFov) > 0.05) { camera.fov = targetFov; camera.updateProjectionMatrix(); }
     const wantScope = state.ads && WEAPONS[state.weapon].scoped && ammo[state.weapon].attach === 'scope';
     ui.scope.classList.toggle('show', !!wantScope && state.adsAmt > 0.6);
@@ -1094,53 +1215,166 @@
       playerMixer = new T.AnimationMixer(m);
       gltf.animations.forEach((c) => { clips[c.name] = playerMixer.clipAction(c); });
       modelLoaded = true;
-      if (state.phase !== 'playing') placeMenuModel();
+      // showcase placement is handled per-frame by updateCharacter()
       console.log('[sentinel] loaded — clips:', gltf.animations.map(a => a.name).join(', '));
     }, undefined, (e) => console.warn('[sentinel] load failed — serve over http(s) to see the character; file:// blocks model loads.', e && (e.message || e)));
   }
   function playClip(name, fade = 0.25) { const a = clips[name]; if (!a || a === curClip) return; a.reset().fadeIn(fade).play(); if (curClip) curClip.fadeOut(fade); curClip = a; }
   function setHead(show) { if (!headBone || !headBaseScale) return; show ? headBone.scale.copy(headBaseScale) : headBone.scale.set(1e-4, 1e-4, 1e-4); }
-  function placeMenuModel() {
-    if (!playerModel) return;
-    playerModel.visible = true; setHead(true);
-    const gx = 0, gz = 30; playerModel.position.set(gx, terrainHeight(gx, gz) + FOOT_LIFT, gz);
-    playerModel.rotation.set(0, 0, 0); playClip(CLIP.idle, 0);
+  // Procedural blocky characters (alternates to the GLB Sentinel)
+  const procChars = {};
+  function makeBlockyChar(c) {
+    const grp = new T.Group();
+    const mat = (x) => new T.MeshStandardMaterial({ color: x, roughness: 0.8 });
+    const part = (w, h, d, col, x, y, z) => { const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat(col)); m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; grp.add(m); return m; };
+    const legL = part(0.45, 1.3, 0.5, c.pants, -0.32, 0.65, 0), legR = part(0.45, 1.3, 0.5, c.pants, 0.32, 0.65, 0);
+    part(1.25, 1.5, 0.65, c.shirt, 0, 2.05, 0);
+    const armL = part(0.42, 1.4, 0.46, c.shirt, -0.86, 2.05, 0), armR = part(0.42, 1.4, 0.46, c.shirt, 0.86, 2.05, 0);
+    part(0.95, 0.9, 0.95, c.skin, 0, 3.25, 0);
+    part(0.7, 0.18, 0.06, 0x10131a, 0, 3.3, 0.49);   // visor
+    grp.scale.setScalar(2.5 / 3.7);                   // ≈ player height
+    grp.visible = false; scene.add(grp);
+    return { kind: 'proc', grp, legL, legR, armL, armR, walkT: 0, lift: 0 };
+  }
+  function getCharVisual(id) {
+    if (id === 'sentinel') return modelLoaded ? { kind: 'glb', grp: playerModel, lift: FOOT_LIFT } : null;
+    if (!procChars[id]) procChars[id] = makeBlockyChar(CHARACTERS[id].colors);
+    return procChars[id];
+  }
+  function hideAllChars() {
+    if (playerModel) playerModel.visible = false;
+    for (const k in procChars) procChars[k].grp.visible = false;
   }
   function updateCharacter(dt) {
     if (playerMixer) playerMixer.update(dt);
-    if (!modelLoaded) return;
-    if (state.phase !== 'playing') { playerModel.visible = true; setHead(true); playerModel.rotation.y += dt * 0.5; playClip(CLIP.idle); return; }
-    const thirdP = state.view === 'third';
-    // First person = the character's eyes + hands/weapon only. A full third-person
-    // model used as an FP body looks broken (giant, clips, idle reads as "dying"),
-    // so the body shows ONLY in third person. The camera IS the character.
-    playerModel.visible = thirdP;
-    viewmodels[state.weapon].visible = !thirdP;
-    if (!thirdP) return;
-    setHead(true);
-    playerModel.position.set(player.x, player.feetY + FOOT_LIFT, player.z);
-    playerModel.rotation.y = yaw + MODEL.yawOffset;
-    if (state.moving && sprinting) playClip(CLIP.run);
-    else if (state.moving) playClip(CLIP.walk);
-    else playClip(CLIP.idle);
+    hideAllChars();
+    const fp = state.phase === 'playing' && state.view === 'first';
+    viewmodels[state.weapon].visible = fp;
+    const vis = getCharVisual(state.character);
+    if (!vis) return;
+    if (state.phase !== 'playing') {
+      // menu showcase: selected character idles + rotates on the podium
+      vis.grp.visible = true;
+      vis.grp.position.set(0, terrainHeight(0, 30) + (vis.lift || 0), 30);
+      vis.grp.rotation.y += dt * 0.5;
+      if (vis.kind === 'glb') { setHead(true); playClip(CLIP.idle); }
+      return;
+    }
+    if (state.view !== 'third') return;   // FP: camera IS the character
+    vis.grp.visible = true;
+    vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
+    vis.grp.rotation.y = yaw + Math.PI;
+    if (vis.kind === 'glb') {
+      setHead(true);
+      if (state.moving && sprinting) playClip(CLIP.run);
+      else if (state.moving) playClip(CLIP.walk);
+      else playClip(CLIP.idle);
+    } else {
+      vis.walkT += dt * (state.moving ? (sprinting ? 12 : 8) : 0);
+      const sw = state.moving ? Math.sin(vis.walkT) * 0.5 : 0;
+      vis.legL.rotation.x = sw; vis.legR.rotation.x = -sw;
+      vis.armL.rotation.x = -sw * 0.6; vis.armR.rotation.x = sw * 0.6;
+    }
   }
 
   function tick() {
     const dt = Math.min(0.05, clock.getDelta());
-    if (state.phase === 'playing') {
+    if (state.phase === 'playing' && !state.paused) {
       updatePlayer(dt); updateFiring(dt); updateWeaponVisual(dt); updateEnemies(dt);
       updateProjectiles(dt); updatePickups(dt); updateParticles(dt); updateWaves(dt); updateCharacter(dt);
       sun.target.position.set(player.x, 0, player.z); sun.position.set(player.x - 60, 90, player.z + 40);
       if (hitTimer > 0) { hitTimer -= dt; if (hitTimer <= 0) ui.hitmarker.style.opacity = '0'; }
       if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) ui.toast.style.opacity = '0'; }
       updateWeaponHUD();
-    } else { updateProjectiles(dt); updateParticles(dt); updateCharacter(dt); }
-    renderer.render(scene, camera);
+    } else if (state.phase !== 'playing') { updateProjectiles(dt); updateParticles(dt); updateCharacter(dt); }
+    renderer.render(scene, camera);   // paused: render the frozen frame
     requestAnimationFrame(tick);
   }
 
-  // menu camera overview
-  camera.position.set(0, 14, 46); camera.lookAt(0, 4, 0);
+  // ---------------------------------------------------------------------------
+  // Menus, pause, settings wiring
+  // ---------------------------------------------------------------------------
+  const SCREENS = ['m-main', 'm-mode', 'm-char', 'm-settings', 'm-help'];
+  let settingsReturn = 'm-main';
+  function showScreen(id) { SCREENS.forEach(s => { const n = el(s); if (n) n.classList.toggle('show', s === id); }); }
+  function showMenu(on) { const m = el('menu'); if (m) m.classList.toggle('hidden', !on); }
+  function setMenuCamera() {
+    const th = terrainHeight(0, 30);
+    camera.position.set(2.4, th + 2.6, 36.5);
+    camera.lookAt(0, th + 1.5, 30);
+    camera.fov = settings.fov; camera.updateProjectionMatrix();
+  }
+  function openPause() {
+    if (state.phase !== 'playing' || state.paused || state.invOpen) return;
+    state.paused = true; state.firingHeld = false;
+    const p = el('pause'); if (p) p.classList.add('show');
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+  function resumeGame() {
+    if (!state.paused) return;
+    state.paused = false;
+    const p = el('pause'); if (p) p.classList.remove('show');
+    showMenu(false);
+    requestPointer(); renderer.domElement.focus();
+  }
+  function quitToMenu() {
+    state.paused = false;
+    const p = el('pause'); if (p) p.classList.remove('show');
+    resetGame(); state.phase = 'menu';
+    ui.hud.classList.remove('on'); ui.over.classList.remove('show');
+    if (document.pointerLockElement) document.exitPointerLock();
+    setMenuCamera(); showMenu(true); showScreen('m-main'); refreshBest();
+  }
+  function refreshBest() {
+    const f = (m) => records[m].score ? (records[m].score + ' pts · wave ' + records[m].wave) : '—';
+    const bl = el('bestLine'); if (bl) bl.innerHTML = 'BEST — Survival: <b>' + f('survival') + '</b> · Horde: <b>' + f('horde') + '</b> · Rush: <b>' + (records.rush.time ? fmtTime(records.rush.time) : '—') + '</b>';
+    const bs = el('best-survival'); if (bs) bs.textContent = records.survival.score ? ('Best: ' + records.survival.score + ' pts · wave ' + records.survival.wave) : 'No record yet';
+    const bh = el('best-horde'); if (bh) bh.textContent = records.horde.score ? ('Best: ' + records.horde.score + ' pts') : 'No record yet';
+    const br = el('best-rush'); if (br) br.textContent = records.rush.time ? ('Best: ' + fmtTime(records.rush.time)) : 'No record yet';
+  }
+  function bindSettings() {
+    const rows = [['setSens', 'sens', v => (+v).toFixed(2)], ['setFov', 'fov', v => Math.round(v) + '°'], ['setSfx', 'sfx', v => Math.round(v * 100) + '%'], ['setMusic', 'music', v => Math.round(v * 100) + '%']];
+    rows.forEach(([id, key, fmt]) => {
+      const inp = el(id), val = el(id + 'V'); if (!inp) return;
+      inp.value = settings[key]; if (val) val.textContent = fmt(settings[key]);
+      inp.addEventListener('input', () => {
+        settings[key] = +inp.value; if (val) val.textContent = fmt(settings[key]);
+        if (key === 'fov' && state.phase !== 'playing') { camera.fov = settings.fov; camera.updateProjectionMatrix(); }
+        if (key === 'music' && musicGain) musicGain.gain.value = settings.music * 0.06;
+        persist();
+      });
+    });
+    const inv = el('setInvert');
+    if (inv) { inv.checked = !!settings.invertY; inv.addEventListener('change', () => { settings.invertY = inv.checked; persist(); }); }
+  }
+  function wireMenus() {
+    const on = (id, fn) => { const n = el(id); if (n) n.addEventListener('click', fn); };
+    on('btnPlay', () => { showScreen('m-mode'); refreshBest(); });
+    on('btnSettings', () => { settingsReturn = 'm-main'; showScreen('m-settings'); });
+    on('btnHowto', () => showScreen('m-help'));
+    on('modeBack', () => showScreen('m-main'));
+    on('charBack', () => showScreen('m-mode'));
+    on('helpBack', () => showScreen('m-main'));
+    on('settingsBack', () => {
+      if (settingsReturn === 'pause') { showMenu(false); const p = el('pause'); if (p) p.classList.add('show'); }
+      else showScreen(settingsReturn);
+    });
+    Object.keys(MODES).forEach(m => on('mode-' + m, () => { state.mode = m; showScreen('m-char'); }));
+    Object.keys(CHARACTERS).forEach(c => on('char-' + c, () => {
+      state.character = c;
+      Object.keys(CHARACTERS).forEach(k => { const n = el('char-' + k); if (n) n.classList.toggle('sel', k === c); });
+    }));
+    on('btnDeploy', () => startGame());
+    on('btnResume', () => resumeGame());
+    on('btnPauseSettings', () => { settingsReturn = 'pause'; const p = el('pause'); if (p) p.classList.remove('show'); showMenu(true); showScreen('m-settings'); });
+    on('btnQuit', () => quitToMenu());
+    on('btnRedeploy', () => { ui.over.classList.remove('show'); startGame(); });
+    on('btnMenu', () => quitToMenu());
+    bindSettings(); refreshBest();
+  }
+
+  wireMenus();
+  setMenuCamera();
   buildWeaponList(); applyAttachVisual();
   updateHealthHUD(); updateWeaponHUD(); updateTopHUD();
   loadCharacter();
@@ -1149,5 +1383,5 @@
   window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
   // expose a tiny hook for automated tests (no effect in normal play)
-  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster, get modelLoaded() { return modelLoaded; }, get playerModel() { return playerModel; } };
+  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster, get modelLoaded() { return modelLoaded; }, get playerModel() { return playerModel; }, MODES, CHARACTERS, records, settings };
 })();
