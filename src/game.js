@@ -1440,10 +1440,10 @@
     if (state.view !== 'third') return;   // FP: camera IS the character
     vis.grp.visible = true;
     vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
-    // Measured (headfront/toe bones, bind + animated): model faces +Z locally.
-    // Player forward at yaw=0 is -Z, so +PI points him where you move/aim —
-    // back to the camera, standard third person.
-    vis.grp.rotation.y = yaw + Math.PI;
+    // Empirically (user-confirmed): this model's VISIBLE face is its local -Z,
+    // opposite the mislabeled `headfront` bone. yaw points -Z along the player's
+    // forward, so his back is to the third-person camera.
+    vis.grp.rotation.y = yaw;
     if (vis.kind === 'glb') {
       setHead(true);
       if (state.moving) playClip(CLIP.move, 0.18, sprinting ? 1.45 : 0.85);  // jog vs sprint = same run clip, faster

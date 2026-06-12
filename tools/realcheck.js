@@ -62,8 +62,11 @@ setImmediate(()=>setImmediate(()=>{
     const fp=new THREE.Vector3().setFromMatrixPosition(front.matrixWorld);
     const fwd={x:-Math.sin(G.yaw), z:-Math.cos(G.yaw)};
     const dot=(fp.x-hp.x)*fwd.x+(fp.z-hp.z)*fwd.z;
-    console.log('facing dot(player fwd):', dot.toFixed(3), '(must be > 0)');
-    ok.facesForward = dot>0;
+    // This model's VISIBLE face is its local -Z (user-confirmed); the headfront
+    // bone is on the opposite (+Z) side. So when his back is correctly to the
+    // camera, headfront points toward the camera => dot < 0.
+    console.log('facing dot(headfront, player fwd):', dot.toFixed(3), '(must be < 0 = back to camera)');
+    ok.backToCamera = dot<0;
   }
   ok.noErrors = errors.length===0;
   console.log(JSON.stringify(ok));
