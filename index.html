@@ -244,6 +244,7 @@
     <div class="line"><kbd>T</kbd><span>Cycle attachment</span></div>
     <div class="line"><kbd>1-5</kbd><span>Weapons</span></div>
     <div class="line"><kbd>V</kbd><span>1st / 3rd person</span></div>
+    <div class="line"><kbd>F</kbd><span>Flip character facing</span></div>
     <div class="line"><kbd>H</kbd><span>Toggle help</span></div>
   </div>
 </div>
@@ -5104,6 +5105,11 @@
         toggleInventory(); return;
       }
       if (e.code === 'KeyR') startReload();
+      else if (e.code === 'KeyF') {   // instant 180° character-facing flip (persisted)
+        settings.flipChar = !settings.flipChar; persist();
+        const fc = el('setFlip'); if (fc) fc.checked = settings.flipChar;
+        toast('FACING FLIPPED 180°', 0x60a5fa);
+      }
       else if (e.code === 'KeyG') throwGrenade();
       else if (e.code === 'KeyT') cycleAttachment();
       else if (e.code === 'KeyQ') useMedkit();
@@ -5545,6 +5551,6 @@
 })();
 
 </script>
-<div id="buildTag">build 2026-06-12 20:25 · 5cd3535</div>
+<div id="buildTag">build 2026-06-12 20:29 · c3eed04</div>
 </body>
 </html>

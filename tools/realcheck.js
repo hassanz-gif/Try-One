@@ -74,6 +74,11 @@ setImmediate(()=>setImmediate(()=>{
     console.log('facing flipped dot:', dot2.toFixed(3), '(expect < 0)');
     ok.facingToggleFlips = dot2<0;
     G.settings.flipChar = false;
+    // F key flips live and persists the setting
+    key('KeyF'); frame(2);
+    ok.fKeyFlips = G.settings.flipChar===true;
+    key('KeyF'); frame(2);
+    ok.fKeyFlipsBack = G.settings.flipChar===false;
   }
   ok.noErrors = errors.length===0;
   console.log(JSON.stringify(ok));

@@ -1128,6 +1128,11 @@
         toggleInventory(); return;
       }
       if (e.code === 'KeyR') startReload();
+      else if (e.code === 'KeyF') {   // instant 180° character-facing flip (persisted)
+        settings.flipChar = !settings.flipChar; persist();
+        const fc = el('setFlip'); if (fc) fc.checked = settings.flipChar;
+        toast('FACING FLIPPED 180°', 0x60a5fa);
+      }
       else if (e.code === 'KeyG') throwGrenade();
       else if (e.code === 'KeyT') cycleAttachment();
       else if (e.code === 'KeyQ') useMedkit();
