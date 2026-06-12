@@ -91,6 +91,15 @@
   #scope::before { content:''; position:absolute; left:50%; top:50%; width:1px; height:100%; background:rgba(0,0,0,.8); transform:translateX(-50%); }
   #scope::after { content:''; position:absolute; top:50%; left:50%; height:1px; width:100%; background:rgba(0,0,0,.8); transform:translateY(-50%); }
 
+  /* Armor + interact prompt */
+  #armorWrap { position:absolute; left:22px; bottom:66px; width:240px; }
+  #armorBar { height:8px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.18); border-radius:3px; overflow:hidden; }
+  #armorFill { height:100%; width:0%; background:linear-gradient(90deg,#3b82f6,#60a5fa); transition:width .12s linear; }
+  #armorNum { font-size:10px; color:var(--dim); margin-top:2px; }
+  #prompt { position:absolute; left:50%; bottom:30%; transform:translateX(-50%); font-size:13px; letter-spacing:.18em;
+    color:var(--cyan); background:rgba(10,14,20,.72); border:1px solid rgba(34,211,238,.45); padding:8px 16px; border-radius:4px; display:none; }
+  #prompt.show { display:block; }
+
   /* Health */
   #healthWrap { position:absolute; left:22px; bottom:22px; width:240px; }
   #healthLabel { font-size:10px; letter-spacing:.18em; color:var(--dim); text-transform:uppercase; margin-bottom:5px; }
@@ -156,6 +165,7 @@
   .att { font-size:11px; color:var(--dim); border:1px solid rgba(255,255,255,.14); border-radius:4px; padding:5px 9px; cursor:pointer; }
   .att:hover { border-color:var(--cyan); color:var(--ink); }
   .att.on { background:var(--warn); color:#1a1505; border-color:var(--warn); font-weight:700; }
+  .att.off { opacity:.4; cursor:default; }
   .items { display:flex; flex-direction:column; gap:8px; }
   .item { display:grid; grid-template-columns:18px 1fr auto; grid-template-rows:auto auto; gap:1px 10px; background:rgba(0,0,0,.3); border:1px solid rgba(255,255,255,.08); border-radius:5px; padding:9px 11px; }
   .item.use { cursor:pointer; border-color:rgba(74,222,128,.4); }
@@ -187,7 +197,9 @@
   <div id="banner"></div>
   <div id="toast"></div>
 
+  <div id="armorWrap"><div id="armorBar"><div id="armorFill"></div></div><div id="armorNum">Armor 0</div></div>
   <div id="healthWrap"><div id="healthLabel">Health</div><div id="healthBar"><div id="healthFill"></div></div><div id="healthNum">100</div></div>
+  <div id="prompt">E — OPEN SUPPLY CACHE</div>
 
   <div id="weaponList"></div>
   <div id="ammoWrap">

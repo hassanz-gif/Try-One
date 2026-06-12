@@ -523,6 +523,90 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Supply caches (loot chests): walk up, press E, loot pours out
+  // ---------------------------------------------------------------------------
+  const chests = [];
+  let chestTimer = 3, nearChest = null;
+  function spawnChest() {
+    let x, z, tries = 0;
+    do { const a = rand(0, Math.PI * 2), r = rand(12, 58); x = Math.cos(a) * r; z = Math.sin(a) * r; tries++; }
+    while (maxPenetration(x, z, 0, 1.4) > 0 && tries < 30);
+    const grp = new T.Group();
+    const base = new T.Mesh(new T.BoxGeometry(1.6, 1.0, 1.1), new T.MeshStandardMaterial({ color: 0x2c3a4d, metalness: 0.6, roughness: 0.35 }));
+    base.position.y = 0.5; base.castShadow = true; base.receiveShadow = true; grp.add(base);
+    const lidGeo = new T.BoxGeometry(1.6, 0.35, 1.1); lidGeo.translate(0, 0.175, 0.55);   // hinge at back edge
+    const lid = new T.Mesh(lidGeo, new T.MeshStandardMaterial({ color: 0x3a4c63, metalness: 0.6, roughness: 0.3 }));
+    lid.position.set(0, 1.0, -0.55); lid.castShadow = true; grp.add(lid);
+    const stripe = new T.Mesh(new T.BoxGeometry(1.64, 0.12, 1.14), new T.MeshStandardMaterial({ color: 0x22d3ee, emissive: 0x22d3ee, emissiveIntensity: 1.4, metalness: 0.3, roughness: 0.3 }));
+    stripe.position.y = 0.78; grp.add(stripe);
+    const beacon = new T.Mesh(new T.CylinderGeometry(0.18, 0.18, 9, 8, 1, true),
+      new T.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.35, blending: T.AdditiveBlending, depthWrite: false, fog: false, side: T.DoubleSide }));
+    beacon.position.y = 5; grp.add(beacon);
+    const light = new T.PointLight(0x22d3ee, 0.9, 9); light.position.y = 1.4; grp.add(light);
+    grp.position.set(x, terrainHeight(x, z), z);
+    scene.add(grp);
+    chests.push({ grp, lid, beacon, light, open: false, openT: 0, t: rand(0, 6) });
+  }
+  function updateChests(dt) {
+    chestTimer -= dt;
+    if (chestTimer <= 0 && chests.length < 4) { spawnChest(); chestTimer = 14; }
+    let near = null, nd = 1e9;
+    for (let i = chests.length - 1; i >= 0; i--) {
+      const c = chests[i]; c.t += dt;
+      if (!c.open) {
+        c.light.intensity = 0.8 + Math.sin(c.t * 3) * 0.35;
+        const d = Math.hypot(player.x - c.grp.position.x, player.z - c.grp.position.z);
+        if (d < 3.2 && d < nd) { nd = d; near = c; }
+      } else {
+        c.openT += dt;
+        c.lid.rotation.x = -Math.min(1, c.openT * 2.2) * 1.9;
+        c.beacon.material.opacity = Math.max(0, 0.35 - c.openT * 0.25);
+        c.light.intensity = Math.max(0, 1.2 - c.openT);
+        if (c.openT > 2.5) { scene.remove(c.grp); chests.splice(i, 1); }
+      }
+    }
+    nearChest = near;
+    if (ui.prompt) ui.prompt.classList.toggle('show', !!near && !state.invOpen);
+  }
+  function tryOpenChest() {
+    const c = nearChest; if (!c || c.open) return;
+    c.open = true; c.openT = 0; sfx('pickup', 1.3);
+    const rolls = 2 + (Math.random() < 0.35 ? 1 : 0);
+    for (let i = 0; i < rolls; i++) {
+      const r = Math.random();
+      if (r < 0.25) { WEAPON_ORDER.forEach(k => ammo[k].reserve = Math.min(ammo[k].reserve + Math.round(WEAPONS[k].magSize * 1.5), WEAPONS[k].reserve * 2)); killfeedAdd('CACHE · +AMMO'); }
+      else if (r < 0.45) { state.inv.medkit++; killfeedAdd('CACHE · +MEDKIT'); }
+      else if (r < 0.60) { state.grenades = Math.min(state.maxGrenades, state.grenades + 1); killfeedAdd('CACHE · +GRENADE'); }
+      else if (r < 0.80) { addArmor(25); killfeedAdd('CACHE · +25 ARMOR'); }
+      else { const s = Math.round(rand(10, 25)); state.inv.scrap += s; killfeedAdd('CACHE · +' + s + ' SCRAP'); }
+    }
+    toast('SUPPLY CACHE OPENED', 0x22d3ee);
+    spawnDebris(c.grp.position.clone().setY(c.grp.position.y + 1), 0x22d3ee, 6, 4);
+    updateWeaponHUD(); updateHealthHUD(); if (state.invOpen) renderInventory();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Crafting (light): turn scrap into supplies, from the inventory screen
+  // ---------------------------------------------------------------------------
+  const CRAFTS = {
+    medkit:  { cost: 15, label: 'Medkit' },
+    grenade: { cost: 10, label: 'Grenade' },
+    armor:   { cost: 20, label: 'Armor +25' },
+    ammo:    { cost: 10, label: 'Ammo refill' },
+  };
+  function craft(kind) {
+    const c = CRAFTS[kind]; if (!c || state.inv.scrap < c.cost) return false;
+    state.inv.scrap -= c.cost;
+    if (kind === 'medkit') state.inv.medkit++;
+    else if (kind === 'grenade') state.grenades = Math.min(state.maxGrenades, state.grenades + 1);
+    else if (kind === 'armor') addArmor(25);
+    else WEAPON_ORDER.forEach(k => ammo[k].reserve = Math.min(ammo[k].reserve + WEAPONS[k].magSize, WEAPONS[k].reserve * 2));
+    sfx('reload'); toast('Crafted: ' + c.label, 0x4ade80);
+    updateWeaponHUD(); updateHealthHUD(); if (state.invOpen) renderInventory();
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
   // Inventory (Rust-styled): loadout belt, attachments, picked-up items
   // ---------------------------------------------------------------------------
   function toggleInventory(open) {
@@ -544,10 +628,12 @@
     const cw = WEAPONS[state.weapon], ca = ammo[state.weapon];
     let h = '<div class="inv-card"><div class="inv-head"><span>INVENTORY</span><span class="inv-x">TAB / ESC to close</span></div><div class="inv-cols">';
     // operative
-    h += '<div class="inv-col"><div class="inv-title">Operative</div><div class="op-name">BLOX·OP-7</div><div class="op-rank">RANK — WAVE ' + state.wave + '</div><div class="op-stats">' +
-      '<div><span>Health</span><b>' + Math.max(0, Math.round(state.hp)) + '</b></div>' +
+    h += '<div class="inv-col"><div class="inv-title">Operative</div><div class="op-name">' + CHARACTERS[state.character].name.toUpperCase() + '</div><div class="op-rank">' + MODES[state.mode].name.toUpperCase() + ' — ' + (state.mode === 'rush' ? fmtTime(state.modeTime) : 'WAVE ' + state.wave) + '</div><div class="op-stats">' +
+      '<div><span>Health</span><b>' + Math.max(0, Math.round(state.hp)) + ' / ' + state.maxHp + '</b></div>' +
+      '<div><span>Armor</span><b>' + Math.round(state.armor) + ' / ' + state.maxArmor + '</b></div>' +
       '<div><span>Kills</span><b>' + state.kills + '</b></div>' +
       '<div><span>Score</span><b>' + state.score + '</b></div>' +
+      '<div><span>Scrap</span><b>' + state.inv.scrap + '</b></div>' +
       '<div><span>Grenades</span><b>' + state.grenades + '</b></div></div></div>';
     // arsenal + attachments
     h += '<div class="inv-col"><div class="inv-title">Arsenal</div><div class="arsenal">' + WEAPON_ORDER.map((k, i) => W(k, i)).join('') + '</div>';
@@ -557,11 +643,16 @@
       '<div class="item' + (state.inv.medkit > 0 ? ' use' : '') + '" data-item="medkit"><div class="it-ic" style="background:#ef4444"></div><div class="it-n">Medkit</div><div class="it-x">x' + state.inv.medkit + '</div><div class="it-h">' + (state.inv.medkit > 0 ? 'click / Q' : '—') + '</div></div>' +
       '<div class="item" data-item="grenade"><div class="it-ic" style="background:#fbbf24"></div><div class="it-n">Grenade</div><div class="it-x">x' + state.grenades + '</div><div class="it-h">G to throw</div></div>' +
       '<div class="item"><div class="it-ic" style="background:#4ade80"></div><div class="it-n">Ammo box</div><div class="it-x">x' + state.inv.ammo + '</div><div class="it-h">auto-applied</div></div>' +
-      '</div></div>';
+      '<div class="item"><div class="it-ic" style="background:#9fb0c4"></div><div class="it-n">Scrap</div><div class="it-x">x' + state.inv.scrap + '</div><div class="it-h">craft below</div></div>' +
+      '</div>';
+    // quick craft
+    h += '<div class="inv-sub">Quick craft — ' + state.inv.scrap + ' scrap</div><div class="atts">' +
+      Object.keys(CRAFTS).map(k => { const c = CRAFTS[k], can = state.inv.scrap >= c.cost; return '<div class="att craftbtn' + (can ? '' : ' off') + '" data-craft="' + k + '">' + c.label + ' · ' + c.cost + '</div>'; }).join('') + '</div></div>';
     h += '</div></div>';
     ui.inventory.innerHTML = h;
     ui.inventory.querySelectorAll('.wcard').forEach(c => c.addEventListener('click', () => { switchWeapon(c.dataset.w); renderInventory(); }));
-    ui.inventory.querySelectorAll('.att').forEach(c => c.addEventListener('click', () => { setAttachment(c.dataset.att); renderInventory(); }));
+    ui.inventory.querySelectorAll('.att:not(.craftbtn)').forEach(c => c.addEventListener('click', () => { setAttachment(c.dataset.att); renderInventory(); }));
+    ui.inventory.querySelectorAll('.craftbtn').forEach(c => c.addEventListener('click', () => craft(c.dataset.craft)));
     ui.inventory.querySelectorAll('.item.use').forEach(c => c.addEventListener('click', () => { if (c.dataset.item === 'medkit') useMedkit(); }));
   }
 
@@ -574,8 +665,9 @@
     weapon: 'smg', recoil: 0, recoilV: 0, fireTimer: 0, firingHeld: false, semiLatch: false,
     reloading: false, reloadTimer: 0, ads: false, adsAmt: 0, bob: 0,
     grenades: 3, maxGrenades: 5, nadeCD: 0, pressure: 0, view: 'first', moving: false, swayX: 0, swayY: 0,
-    inv: { medkit: 1, ammo: 0 }, invOpen: false, kills: 0,
+    inv: { medkit: 1, ammo: 0, scrap: 0 }, invOpen: false, kills: 0,
     mode: 'survival', character: 'sentinel', paused: false, modeTime: 0, spawned: 0, speedMul: 1,
+    armor: 0, maxArmor: 100,
   };
 
   // ---------------------------------------------------------------------------
@@ -604,7 +696,7 @@
   const ui = {};
   ['over','overStats','hud','wave','score','enemiesLeft','healthFill','healthNum',
    'weaponName','mag','reserve','reloadTag','attachName','grenades','weaponList',
-   'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory','invBtn'].forEach(id => ui[id] = el(id));
+   'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory','invBtn','armorFill','armorNum','prompt'].forEach(id => ui[id] = el(id));
 
   function buildWeaponList() {
     ui.weaponList.innerHTML = '';
@@ -628,7 +720,10 @@
     ui.healthFill.style.width = pct + '%';
     ui.healthFill.style.background = pct > 50 ? 'linear-gradient(90deg,#22c55e,#4ade80)' : pct > 25 ? 'linear-gradient(90deg,#f59e0b,#fbbf24)' : 'linear-gradient(90deg,#b91c1c,#ef4444)';
     ui.healthNum.textContent = Math.max(0, Math.round(state.hp));
+    if (ui.armorFill) ui.armorFill.style.width = clamp(state.armor / state.maxArmor, 0, 1) * 100 + '%';
+    if (ui.armorNum) ui.armorNum.textContent = 'Armor ' + Math.round(state.armor);
   }
+  function addArmor(n) { state.armor = clamp(state.armor + n, 0, state.maxArmor); updateHealthHUD(); }
   function updateTopHUD() {
     if (state.mode === 'horde') ui.wave.textContent = 'HORDE · THREAT ' + Math.max(1, state.wave);
     else if (state.mode === 'rush') ui.wave.textContent = 'RUSH ' + Math.min(state.kills, MODES.rush.target) + ' / ' + MODES.rush.target + ' · ' + fmtTime(state.modeTime);
@@ -794,8 +889,10 @@
       e.alive = false; e.dying = e.boss ? 1.2 : 0.6;
       for (const m of e.hitMeshes) { const i = enemyHitMeshes.indexOf(m); if (i >= 0) enemyHitMeshes.splice(i, 1); }
       state.score += head ? Math.round(e.score * 1.6) : e.score; state.kills++;
+      const scrap = e.boss ? 25 : (Math.random() < 0.3 ? Math.round(rand(2, 6)) : 0);
+      if (scrap) state.inv.scrap += scrap;
       sfx('kill'); showHitmarker(true);
-      killfeedAdd((head ? '<b>HEADSHOT</b> ' : '') + e.type.toUpperCase() + ' · +' + (head ? Math.round(e.score * 1.6) : e.score));
+      killfeedAdd((head ? '<b>HEADSHOT</b> ' : '') + e.type.toUpperCase() + ' · +' + (head ? Math.round(e.score * 1.6) : e.score) + (scrap ? ' · +' + scrap + ' scrap' : ''));
       spawnDebris(e.grp.position, e.cfg.accent, e.boss ? 24 : 8, 8);
       if (e.boss) spawnFlashSprite(e.grp.position.clone().setY(e.grp.position.y + 1), e.cfg.accent, 3);
       if (Math.random() < e.loot || e.boss) dropLoot(e.grp.position, e.boss);
@@ -861,7 +958,9 @@
   // ---------------------------------------------------------------------------
   function hurtPlayer(dmg) {
     if (state.phase !== 'playing') return;
-    state.hp -= dmg; state.lastHurt = clock.elapsedTime; sfx('hurt');
+    const absorb = Math.min(state.armor, dmg * 0.6);   // armor soaks 60% until depleted
+    state.armor -= absorb;
+    state.hp -= (dmg - absorb); state.lastHurt = clock.elapsedTime; sfx('hurt');
     ui.hurt.style.boxShadow = 'inset 0 0 200px 50px rgba(220,30,30,0.6)';
     clearTimeout(hurtPlayer._t); hurtPlayer._t = setTimeout(() => { ui.hurt.style.boxShadow = 'inset 0 0 200px 30px rgba(220,30,30,0)'; }, 130);
     updateHealthHUD();
@@ -908,6 +1007,9 @@
     for (const tr of tracers) { scene.remove(tr.line); if (tr.light) scene.remove(tr.light); } tracers.length = 0;
     for (const pr of projectiles) scene.remove(pr.mesh); projectiles.length = 0;
     for (const pk of pickups) scene.remove(pk.grp); pickups.length = 0;
+    for (const c of chests) scene.remove(c.grp); chests.length = 0; chestTimer = 3; nearChest = null;
+    if (ui.prompt) ui.prompt.classList.remove('show');
+    state.armor = 0;
 
     const ch = CHARACTERS[state.character] || CHARACTERS.sentinel;
     state.maxHp = ch.hp; state.hp = ch.hp; state.speedMul = ch.speed;
@@ -917,7 +1019,7 @@
     state.toSpawn = 0; state.waveActive = false; state.waveDelay = 2.0; state.spawnQueue = [];
     state.weapon = 'smg'; state.reloading = false; state.fireTimer = 0; state.recoil = 0; state.recoilV = 0;
     state.ads = false; state.adsAmt = 0; state.grenades = 3; state.view = 'first';
-    state.inv = { medkit: 1, ammo: 0 }; state.kills = 0; if (state.invOpen) toggleInventory(false);
+    state.inv = { medkit: 1, ammo: 0, scrap: 0 }; state.kills = 0; if (state.invOpen) toggleInventory(false);
     WEAPON_ORDER.forEach(k => { ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] }; viewmodels[k].visible = (k === 'smg'); });
     applyAttachVisual();
     if (curClip) { curClip.stop(); curClip = null; }   // reset character animation state
@@ -971,6 +1073,7 @@
       if (state.paused) { if (MOVE_CODES.has(e.code)) e.preventDefault(); return; }
       if (e.code === 'Tab' || e.code === 'KeyI') { e.preventDefault(); toggleInventory(); return; }
       if (e.code === 'KeyR') startReload();
+      else if (e.code === 'KeyE') tryOpenChest();
       else if (e.code === 'KeyG') throwGrenade();
       else if (e.code === 'KeyT') cycleAttachment();
       else if (e.code === 'KeyQ') useMedkit();
@@ -1281,7 +1384,7 @@
     const dt = Math.min(0.05, clock.getDelta());
     if (state.phase === 'playing' && !state.paused) {
       updatePlayer(dt); updateFiring(dt); updateWeaponVisual(dt); updateEnemies(dt);
-      updateProjectiles(dt); updatePickups(dt); updateParticles(dt); updateWaves(dt); updateCharacter(dt);
+      updateProjectiles(dt); updatePickups(dt); updateParticles(dt); updateWaves(dt); updateCharacter(dt); updateChests(dt);
       sun.target.position.set(player.x, 0, player.z); sun.position.set(player.x - 60, 90, player.z + 40);
       if (hitTimer > 0) { hitTimer -= dt; if (hitTimer <= 0) ui.hitmarker.style.opacity = '0'; }
       if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) ui.toast.style.opacity = '0'; }
@@ -1383,5 +1486,5 @@
   window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
   // expose a tiny hook for automated tests (no effect in normal play)
-  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster, get modelLoaded() { return modelLoaded; }, get playerModel() { return playerModel; }, MODES, CHARACTERS, records, settings };
+  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster, get modelLoaded() { return modelLoaded; }, get playerModel() { return playerModel; }, MODES, CHARACTERS, records, settings, chests, craft, tryOpenChest, addArmor, get nearChest() { return nearChest; } };
 })();
