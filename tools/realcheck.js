@@ -62,11 +62,18 @@ setImmediate(()=>setImmediate(()=>{
     const fp=new THREE.Vector3().setFromMatrixPosition(front.matrixWorld);
     const fwd={x:-Math.sin(G.yaw), z:-Math.cos(G.yaw)};
     const dot=(fp.x-hp.x)*fwd.x+(fp.z-hp.z)*fwd.z;
-    // Stamp-verified on build a3406e8: the VISIBLE face is opposite the
-    // headfront bone. Back-to-camera therefore means headfront points AT the
-    // camera => dot < 0. (Trust the screenshot, not the bone label.)
-    console.log('facing dot(headfront, player fwd):', dot.toFixed(3), '(must be < 0 = back to camera)');
-    ok.backToCamera = dot<0;
+    // Default (flipChar=false): yaw+PI => headfront along player-forward, dot>0.
+    console.log('facing default dot:', dot.toFixed(3), '(expect > 0)');
+    ok.facingDefault = dot>0;
+    // The Settings toggle must flip it by exactly 180°: dot changes sign.
+    G.settings.flipChar = true; frame(2);
+    pm.updateMatrixWorld(true);
+    const fp2=new THREE.Vector3().setFromMatrixPosition(front.matrixWorld);
+    const hp2=new THREE.Vector3().setFromMatrixPosition(head.matrixWorld);
+    const dot2=(fp2.x-hp2.x)*fwd.x+(fp2.z-hp2.z)*fwd.z;
+    console.log('facing flipped dot:', dot2.toFixed(3), '(expect < 0)');
+    ok.facingToggleFlips = dot2<0;
+    G.settings.flipChar = false;
   }
   ok.noErrors = errors.length===0;
   console.log(JSON.stringify(ok));
