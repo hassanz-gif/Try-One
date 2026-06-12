@@ -52,6 +52,10 @@
   // ---------------------------------------------------------------------------
   scene.add(new T.HemisphereLight(0xdcefff, 0x35502f, 0.85));
   scene.add(new T.AmbientLight(0xffffff, 0.22));
+  // dedicated spotlight to showcase the character on the menu podium
+  const showcaseLight = new T.SpotLight(0xffffff, 0, 30, 0.7, 0.5, 1);
+  showcaseLight.position.set(4, 9, 36);
+  scene.add(showcaseLight); scene.add(showcaseLight.target);
   const sun = new T.DirectionalLight(0xfff2d8, 1.05);
   sun.position.set(-60, 90, 40);
   sun.castShadow = true;
@@ -696,7 +700,12 @@
   const ui = {};
   ['over','overStats','hud','wave','score','enemiesLeft','healthFill','healthNum',
    'weaponName','mag','reserve','reloadTag','attachName','grenades','weaponList',
-   'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory','invBtn','armorFill','armorNum','prompt'].forEach(id => ui[id] = el(id));
+   'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory','invBtn','viewBtn','armorFill','armorNum','prompt'].forEach(id => ui[id] = el(id));
+  function setView(v) {
+    state.view = v;
+    if (ui.viewBtn) ui.viewBtn.innerHTML = (v === 'third' ? '◉ 3RD PERSON' : '◉ 1ST PERSON') + ' <kbd>V</kbd>';
+    toast(v === 'third' ? 'Third person' : 'First person', 0x60a5fa);
+  }
 
   function buildWeaponList() {
     ui.weaponList.innerHTML = '';
@@ -1020,6 +1029,7 @@
     state.toSpawn = 0; state.waveActive = false; state.waveDelay = 2.0; state.spawnQueue = [];
     state.weapon = 'smg'; state.reloading = false; state.fireTimer = 0; state.recoil = 0; state.recoilV = 0;
     state.ads = false; state.adsAmt = 0; state.grenades = 3; state.view = 'first';
+    if (ui.viewBtn) ui.viewBtn.innerHTML = '◉ 1ST PERSON <kbd>V</kbd>';
     state.inv = { medkit: 1, ammo: 0, scrap: 0 }; state.kills = 0; if (state.invOpen) toggleInventory(false);
     WEAPON_ORDER.forEach(k => { ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] }; viewmodels[k].visible = (k === 'smg'); });
     applyAttachVisual();
@@ -1064,6 +1074,7 @@
   });
   window.addEventListener('mouseup', (e) => { if (e.button === 0) { state.firingHeld = false; dragging = false; } else if (e.button === 2) state.ads = false; });
   if (ui.invBtn) ui.invBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.phase === 'playing' && !state.paused) toggleInventory(); });
+  if (ui.viewBtn) ui.viewBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.phase === 'playing' && !state.paused) setView(state.view === 'first' ? 'third' : 'first'); });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const MOVE_CODES = new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space']);
@@ -1079,7 +1090,7 @@
       else if (e.code === 'KeyT') cycleAttachment();
       else if (e.code === 'KeyQ') useMedkit();
       else if (e.code === 'KeyH') ui.help.classList.toggle('show');
-      else if (e.code === 'KeyV') { state.view = state.view === 'first' ? 'third' : 'first'; toast(state.view === 'third' ? 'Third person' : 'First person', 0x60a5fa); }
+      else if (e.code === 'KeyV') setView(state.view === 'first' ? 'third' : 'first');
       else if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); if (n >= 1 && n <= 5) { switchWeapon(WEAPON_ORDER[n - 1]); if (state.invOpen) renderInventory(); } }
     }
     if (MOVE_CODES.has(e.code)) e.preventDefault();
@@ -1357,13 +1368,17 @@
     const vis = getCharVisual(state.character);
     if (!vis) return;
     if (state.phase !== 'playing') {
-      // menu showcase: selected character idles + rotates on the podium
+      // menu showcase: selected character idles + rotates on the podium, lit
       vis.grp.visible = true;
-      vis.grp.position.set(0, terrainHeight(0, 30) + (vis.lift || 0), 30);
+      vis.grp.position.set(2.6, terrainHeight(2.6, 30.5) + (vis.lift || 0), 30.5);
       vis.grp.rotation.y += dt * 0.5;
+      showcaseLight.intensity = 2.4;
+      showcaseLight.target.position.copy(vis.grp.position).y += 1.4;
       if (vis.kind === 'glb') { setHead(true); playClip(CLIP.idle); }
+      const ch = el('charHint'); if (ch) ch.innerHTML = '<b>' + CHARACTERS[state.character].name + '</b>' + (vis.kind === 'glb' ? 'your operative' : 'recruit');
       return;
     }
+    showcaseLight.intensity = 0;
     if (state.view !== 'third') return;   // FP: camera IS the character
     vis.grp.visible = true;
     vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
@@ -1405,9 +1420,9 @@
   function showScreen(id) { SCREENS.forEach(s => { const n = el(s); if (n) n.classList.toggle('show', s === id); }); }
   function showMenu(on) { const m = el('menu'); if (m) m.classList.toggle('hidden', !on); }
   function setMenuCamera() {
-    const th = terrainHeight(0, 30);
-    camera.position.set(2.4, th + 2.6, 36.5);
-    camera.lookAt(0, th + 1.5, 30);
+    const th = terrainHeight(2.6, 30.5);
+    camera.position.set(6.2, th + 2.7, 34.5);   // frame the character on the right of the menu
+    camera.lookAt(2.6, th + 1.4, 30.5);
     camera.fov = settings.fov; camera.updateProjectionMatrix();
   }
   function openPause() {

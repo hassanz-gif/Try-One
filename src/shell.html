@@ -12,19 +12,21 @@
 
   /* Menu system */
   #menu { position:absolute; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
-    background:radial-gradient(ellipse at center,rgba(10,14,22,.55),rgba(2,4,8,.92)); }
+    background:linear-gradient(90deg,rgba(4,6,10,.86) 0%,rgba(6,9,14,.62) 42%,rgba(6,9,14,.22) 70%,rgba(6,9,14,.12) 100%); }
   #menu.hidden { display:none; }
-  .mscreen { display:none; text-align:center; max-width:900px; width:94vw; }
-  .mscreen.show { display:block; }
+  .mscreen { display:none; text-align:left; width:560px; margin-right:auto; margin-left:7vw; }
   .mtitle { font-size:48px; font-weight:800; letter-spacing:.08em; color:#fff; text-shadow:0 3px 0 #155e3a,0 0 30px rgba(74,222,128,.35); margin-bottom:6px; }
   .msub { color:var(--dim); font-size:13px; margin-bottom:30px; }
-  .mbtn { display:block; width:280px; margin:10px auto; padding:13px 0; background:rgba(15,18,24,.85); border:1px solid rgba(255,255,255,.16);
-    color:var(--ink); font-family:inherit; font-size:13px; letter-spacing:.2em; text-transform:uppercase; border-radius:5px; cursor:pointer; }
+  .mbtn { display:block; width:280px; margin:10px 0; padding:13px 0; background:rgba(15,18,24,.85); border:1px solid rgba(255,255,255,.16);
+    color:var(--ink); font-family:inherit; font-size:13px; letter-spacing:.2em; text-transform:uppercase; border-radius:5px; cursor:pointer; text-align:center; }
+  .mscreen.show { display:block; }
+  .charhint { position:absolute; right:8vw; bottom:9vh; text-align:center; color:var(--dim); font-size:11px; letter-spacing:.18em; text-transform:uppercase; pointer-events:none; }
+  .charhint b { color:var(--accent); display:block; font-size:15px; letter-spacing:.06em; margin-bottom:3px; text-transform:none; }
   .mbtn:hover { border-color:var(--accent); color:var(--accent); }
   .mbtn.primary { background:var(--accent); color:#06210f; font-weight:700; border-color:var(--accent); }
   .mbtn.primary:hover { filter:brightness(1.12); color:#06210f; }
   .mhead { font-size:12px; letter-spacing:.3em; color:var(--cyan); text-transform:uppercase; margin-bottom:24px; }
-  .cardrow { display:flex; gap:14px; justify-content:center; margin-bottom:26px; flex-wrap:wrap; }
+  .cardrow { display:flex; gap:14px; justify-content:flex-start; margin-bottom:26px; flex-wrap:wrap; }
   .mcard { width:236px; text-align:left; background:rgba(15,18,24,.88); border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:18px; cursor:pointer; transition:.15s; }
   .mcard:hover { border-color:var(--cyan); transform:translateY(-3px); }
   .mcard.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent),0 8px 30px rgba(74,222,128,.18); }
@@ -138,8 +140,11 @@
   #invBtn { position:absolute; right:16px; top:14px; pointer-events:auto; cursor:pointer; z-index:12;
     background:rgba(10,12,16,.72); border:1px solid rgba(255,255,255,.2); color:var(--ink);
     font-family:inherit; font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:7px 12px; border-radius:5px; }
-  #invBtn:hover { border-color:var(--cyan); color:var(--cyan); }
-  #invBtn kbd { border:1px solid rgba(255,255,255,.25); border-radius:3px; padding:0 5px; font-size:10px; color:var(--dim); }
+  #invBtn:hover, #viewBtn:hover { border-color:var(--cyan); color:var(--cyan); }
+  #invBtn kbd, #viewBtn kbd { border:1px solid rgba(255,255,255,.25); border-radius:3px; padding:0 5px; font-size:10px; color:var(--dim); }
+  #viewBtn { position:absolute; right:16px; top:48px; pointer-events:auto; cursor:pointer; z-index:12;
+    background:rgba(10,12,16,.72); border:1px solid rgba(255,255,255,.2); color:var(--ink);
+    font-family:inherit; font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:7px 12px; border-radius:5px; }
 
   /* Inventory (Rust-styled) */
   #inventory { position:absolute; inset:0; z-index:25; display:none; align-items:center; justify-content:center; background:rgba(8,11,16,.72); backdrop-filter:blur(3px); }
@@ -191,6 +196,7 @@
 <div id="hud">
   <div id="topbar"><div id="compass">N</div><div id="wave">WAVE 1</div><div id="score">0</div><div id="enemiesLeft">0 hostiles</div></div>
   <button id="invBtn" title="Open inventory">▤ INVENTORY <kbd>I</kbd></button>
+  <button id="viewBtn" title="Toggle camera view">◉ 1ST PERSON <kbd>V</kbd></button>
   <div id="crosshair"><span class="v"></span><span class="h"></span><span class="dot"></span></div>
   <div id="hitmarker"><span class="v"></span><span class="h"></span></div>
   <div id="hurt"></div>
@@ -235,6 +241,7 @@
 <div id="inventory"></div>
 
 <div id="menu">
+  <div class="charhint" id="charHint"></div>
   <div class="mscreen show" id="m-main">
     <div class="mhead">Sci-Fi · Wave Survival FPS</div>
     <div class="mtitle">BLOX&nbsp;FORCES</div>

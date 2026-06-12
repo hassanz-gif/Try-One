@@ -12,19 +12,21 @@
 
   /* Menu system */
   #menu { position:absolute; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
-    background:radial-gradient(ellipse at center,rgba(10,14,22,.55),rgba(2,4,8,.92)); }
+    background:linear-gradient(90deg,rgba(4,6,10,.86) 0%,rgba(6,9,14,.62) 42%,rgba(6,9,14,.22) 70%,rgba(6,9,14,.12) 100%); }
   #menu.hidden { display:none; }
-  .mscreen { display:none; text-align:center; max-width:900px; width:94vw; }
-  .mscreen.show { display:block; }
+  .mscreen { display:none; text-align:left; width:560px; margin-right:auto; margin-left:7vw; }
   .mtitle { font-size:48px; font-weight:800; letter-spacing:.08em; color:#fff; text-shadow:0 3px 0 #155e3a,0 0 30px rgba(74,222,128,.35); margin-bottom:6px; }
   .msub { color:var(--dim); font-size:13px; margin-bottom:30px; }
-  .mbtn { display:block; width:280px; margin:10px auto; padding:13px 0; background:rgba(15,18,24,.85); border:1px solid rgba(255,255,255,.16);
-    color:var(--ink); font-family:inherit; font-size:13px; letter-spacing:.2em; text-transform:uppercase; border-radius:5px; cursor:pointer; }
+  .mbtn { display:block; width:280px; margin:10px 0; padding:13px 0; background:rgba(15,18,24,.85); border:1px solid rgba(255,255,255,.16);
+    color:var(--ink); font-family:inherit; font-size:13px; letter-spacing:.2em; text-transform:uppercase; border-radius:5px; cursor:pointer; text-align:center; }
+  .mscreen.show { display:block; }
+  .charhint { position:absolute; right:8vw; bottom:9vh; text-align:center; color:var(--dim); font-size:11px; letter-spacing:.18em; text-transform:uppercase; pointer-events:none; }
+  .charhint b { color:var(--accent); display:block; font-size:15px; letter-spacing:.06em; margin-bottom:3px; text-transform:none; }
   .mbtn:hover { border-color:var(--accent); color:var(--accent); }
   .mbtn.primary { background:var(--accent); color:#06210f; font-weight:700; border-color:var(--accent); }
   .mbtn.primary:hover { filter:brightness(1.12); color:#06210f; }
   .mhead { font-size:12px; letter-spacing:.3em; color:var(--cyan); text-transform:uppercase; margin-bottom:24px; }
-  .cardrow { display:flex; gap:14px; justify-content:center; margin-bottom:26px; flex-wrap:wrap; }
+  .cardrow { display:flex; gap:14px; justify-content:flex-start; margin-bottom:26px; flex-wrap:wrap; }
   .mcard { width:236px; text-align:left; background:rgba(15,18,24,.88); border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:18px; cursor:pointer; transition:.15s; }
   .mcard:hover { border-color:var(--cyan); transform:translateY(-3px); }
   .mcard.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent),0 8px 30px rgba(74,222,128,.18); }
@@ -138,8 +140,11 @@
   #invBtn { position:absolute; right:16px; top:14px; pointer-events:auto; cursor:pointer; z-index:12;
     background:rgba(10,12,16,.72); border:1px solid rgba(255,255,255,.2); color:var(--ink);
     font-family:inherit; font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:7px 12px; border-radius:5px; }
-  #invBtn:hover { border-color:var(--cyan); color:var(--cyan); }
-  #invBtn kbd { border:1px solid rgba(255,255,255,.25); border-radius:3px; padding:0 5px; font-size:10px; color:var(--dim); }
+  #invBtn:hover, #viewBtn:hover { border-color:var(--cyan); color:var(--cyan); }
+  #invBtn kbd, #viewBtn kbd { border:1px solid rgba(255,255,255,.25); border-radius:3px; padding:0 5px; font-size:10px; color:var(--dim); }
+  #viewBtn { position:absolute; right:16px; top:48px; pointer-events:auto; cursor:pointer; z-index:12;
+    background:rgba(10,12,16,.72); border:1px solid rgba(255,255,255,.2); color:var(--ink);
+    font-family:inherit; font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:7px 12px; border-radius:5px; }
 
   /* Inventory (Rust-styled) */
   #inventory { position:absolute; inset:0; z-index:25; display:none; align-items:center; justify-content:center; background:rgba(8,11,16,.72); backdrop-filter:blur(3px); }
@@ -191,6 +196,7 @@
 <div id="hud">
   <div id="topbar"><div id="compass">N</div><div id="wave">WAVE 1</div><div id="score">0</div><div id="enemiesLeft">0 hostiles</div></div>
   <button id="invBtn" title="Open inventory">▤ INVENTORY <kbd>I</kbd></button>
+  <button id="viewBtn" title="Toggle camera view">◉ 1ST PERSON <kbd>V</kbd></button>
   <div id="crosshair"><span class="v"></span><span class="h"></span><span class="dot"></span></div>
   <div id="hitmarker"><span class="v"></span><span class="h"></span></div>
   <div id="hurt"></div>
@@ -235,6 +241,7 @@
 <div id="inventory"></div>
 
 <div id="menu">
+  <div class="charhint" id="charHint"></div>
   <div class="mscreen show" id="m-main">
     <div class="mhead">Sci-Fi · Wave Survival FPS</div>
     <div class="mtitle">BLOX&nbsp;FORCES</div>
@@ -4010,6 +4017,10 @@
   // ---------------------------------------------------------------------------
   scene.add(new T.HemisphereLight(0xdcefff, 0x35502f, 0.85));
   scene.add(new T.AmbientLight(0xffffff, 0.22));
+  // dedicated spotlight to showcase the character on the menu podium
+  const showcaseLight = new T.SpotLight(0xffffff, 0, 30, 0.7, 0.5, 1);
+  showcaseLight.position.set(4, 9, 36);
+  scene.add(showcaseLight); scene.add(showcaseLight.target);
   const sun = new T.DirectionalLight(0xfff2d8, 1.05);
   sun.position.set(-60, 90, 40);
   sun.castShadow = true;
@@ -4654,7 +4665,12 @@
   const ui = {};
   ['over','overStats','hud','wave','score','enemiesLeft','healthFill','healthNum',
    'weaponName','mag','reserve','reloadTag','attachName','grenades','weaponList',
-   'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory','invBtn','armorFill','armorNum','prompt'].forEach(id => ui[id] = el(id));
+   'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory','invBtn','viewBtn','armorFill','armorNum','prompt'].forEach(id => ui[id] = el(id));
+  function setView(v) {
+    state.view = v;
+    if (ui.viewBtn) ui.viewBtn.innerHTML = (v === 'third' ? '◉ 3RD PERSON' : '◉ 1ST PERSON') + ' <kbd>V</kbd>';
+    toast(v === 'third' ? 'Third person' : 'First person', 0x60a5fa);
+  }
 
   function buildWeaponList() {
     ui.weaponList.innerHTML = '';
@@ -4978,6 +4994,7 @@
     state.toSpawn = 0; state.waveActive = false; state.waveDelay = 2.0; state.spawnQueue = [];
     state.weapon = 'smg'; state.reloading = false; state.fireTimer = 0; state.recoil = 0; state.recoilV = 0;
     state.ads = false; state.adsAmt = 0; state.grenades = 3; state.view = 'first';
+    if (ui.viewBtn) ui.viewBtn.innerHTML = '◉ 1ST PERSON <kbd>V</kbd>';
     state.inv = { medkit: 1, ammo: 0, scrap: 0 }; state.kills = 0; if (state.invOpen) toggleInventory(false);
     WEAPON_ORDER.forEach(k => { ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] }; viewmodels[k].visible = (k === 'smg'); });
     applyAttachVisual();
@@ -5022,6 +5039,7 @@
   });
   window.addEventListener('mouseup', (e) => { if (e.button === 0) { state.firingHeld = false; dragging = false; } else if (e.button === 2) state.ads = false; });
   if (ui.invBtn) ui.invBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.phase === 'playing' && !state.paused) toggleInventory(); });
+  if (ui.viewBtn) ui.viewBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.phase === 'playing' && !state.paused) setView(state.view === 'first' ? 'third' : 'first'); });
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const MOVE_CODES = new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space']);
@@ -5037,7 +5055,7 @@
       else if (e.code === 'KeyT') cycleAttachment();
       else if (e.code === 'KeyQ') useMedkit();
       else if (e.code === 'KeyH') ui.help.classList.toggle('show');
-      else if (e.code === 'KeyV') { state.view = state.view === 'first' ? 'third' : 'first'; toast(state.view === 'third' ? 'Third person' : 'First person', 0x60a5fa); }
+      else if (e.code === 'KeyV') setView(state.view === 'first' ? 'third' : 'first');
       else if (e.code.startsWith('Digit')) { const n = +e.code.slice(5); if (n >= 1 && n <= 5) { switchWeapon(WEAPON_ORDER[n - 1]); if (state.invOpen) renderInventory(); } }
     }
     if (MOVE_CODES.has(e.code)) e.preventDefault();
@@ -5315,13 +5333,17 @@
     const vis = getCharVisual(state.character);
     if (!vis) return;
     if (state.phase !== 'playing') {
-      // menu showcase: selected character idles + rotates on the podium
+      // menu showcase: selected character idles + rotates on the podium, lit
       vis.grp.visible = true;
-      vis.grp.position.set(0, terrainHeight(0, 30) + (vis.lift || 0), 30);
+      vis.grp.position.set(2.6, terrainHeight(2.6, 30.5) + (vis.lift || 0), 30.5);
       vis.grp.rotation.y += dt * 0.5;
+      showcaseLight.intensity = 2.4;
+      showcaseLight.target.position.copy(vis.grp.position).y += 1.4;
       if (vis.kind === 'glb') { setHead(true); playClip(CLIP.idle); }
+      const ch = el('charHint'); if (ch) ch.innerHTML = '<b>' + CHARACTERS[state.character].name + '</b>' + (vis.kind === 'glb' ? 'your operative' : 'recruit');
       return;
     }
+    showcaseLight.intensity = 0;
     if (state.view !== 'third') return;   // FP: camera IS the character
     vis.grp.visible = true;
     vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
@@ -5363,9 +5385,9 @@
   function showScreen(id) { SCREENS.forEach(s => { const n = el(s); if (n) n.classList.toggle('show', s === id); }); }
   function showMenu(on) { const m = el('menu'); if (m) m.classList.toggle('hidden', !on); }
   function setMenuCamera() {
-    const th = terrainHeight(0, 30);
-    camera.position.set(2.4, th + 2.6, 36.5);
-    camera.lookAt(0, th + 1.5, 30);
+    const th = terrainHeight(2.6, 30.5);
+    camera.position.set(6.2, th + 2.7, 34.5);   // frame the character on the right of the menu
+    camera.lookAt(2.6, th + 1.4, 30.5);
     camera.fov = settings.fov; camera.updateProjectionMatrix();
   }
   function openPause() {
