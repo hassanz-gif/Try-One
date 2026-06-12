@@ -44,6 +44,8 @@
   .setrow .sval { font-size:12px; color:var(--accent); text-align:right; }
   .setrow.chk { grid-template-columns:150px auto; }
 
+  #buildTag { position:fixed; left:8px; bottom:6px; z-index:40; font-size:10px; color:rgba(159,176,196,.85); letter-spacing:.08em; pointer-events:none; text-shadow:0 1px 2px #000; }
+
   /* Pause */
   #pause { position:absolute; inset:0; z-index:28; display:none; align-items:center; justify-content:center; background:rgba(5,8,12,.72); backdrop-filter:blur(4px); }
   #pause.show { display:flex; }
@@ -5413,10 +5415,9 @@
     if (state.view !== 'third') return;   // FP: camera IS the character
     vis.grp.visible = true;
     vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
-    // Empirically (user-confirmed): this model's VISIBLE face is its local -Z,
-    // opposite the mislabeled `headfront` bone. yaw points -Z along the player's
-    // forward, so his back is to the third-person camera.
-    vis.grp.rotation.y = yaw;
+    // Back to camera = yaw + PI (model's visible face is +Z; player forward is -Z).
+    // Verify which build you're running via the on-screen stamp before judging.
+    vis.grp.rotation.y = yaw + Math.PI;
     if (vis.kind === 'glb') {
       setHead(true);
       if (state.moving) playClip(CLIP.move, 0.18, sprinting ? 1.45 : 0.85);  // jog vs sprint = same run clip, faster
@@ -5541,5 +5542,6 @@
 })();
 
 </script>
+<div id="buildTag">build 2026-06-12 20:16 · 4576582</div>
 </body>
 </html>

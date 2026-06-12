@@ -14,10 +14,15 @@ for (const [name, code] of [['three.min.js', three], ['GLTFLoader.js', gltf], ['
   if (/<\/script/i.test(code)) { console.error('ERROR: ' + name + ' contains </script>, would break inlining'); process.exit(1); }
 }
 
+// Build stamp: provable on-screen build identity (bottom-left in game + menu).
+let stamp = 'build ' + new Date().toISOString().slice(0, 16).replace('T', ' ');
+try { stamp += ' · ' + require('child_process').execSync('git rev-parse --short HEAD', { cwd: root }).toString().trim(); } catch (e) {}
+
 const out = shell
   .replace('<!--THREE-->', '<!-- Three.js r128 (inlined) -->\n<script>\n' + three + '\n</script>')
   .replace('<!--GLTFLOADER-->', '<!-- THREE.GLTFLoader r128 (inlined) -->\n<script>\n' + gltf + '\n</script>')
-  .replace('<!--GAME-->', '<!-- BLOX FORCES game (inlined) -->\n<script>\n' + game + '\n</script>');
+  .replace('<!--GAME-->', '<!-- BLOX FORCES game (inlined) -->\n<script>\n' + game + '\n</script>')
+  .replace('<!--STAMP-->', '<div id="buildTag">' + stamp + '</div>');
 
 fs.writeFileSync(path.join(root, 'index.html'), out);
 console.log('built index.html (' + out.length + ' bytes)');
