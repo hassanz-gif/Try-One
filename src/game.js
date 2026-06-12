@@ -1440,7 +1440,7 @@
     if (state.view !== 'third') return;   // FP: camera IS the character
     vis.grp.visible = true;
     vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
-    vis.grp.rotation.y = yaw + Math.PI;
+    vis.grp.rotation.y = yaw;   // face away from the third-person camera (the model's forward is -Z)
     if (vis.kind === 'glb') {
       setHead(true);
       if (state.moving) playClip(CLIP.move, 0.18, sprinting ? 1.45 : 0.85);  // jog vs sprint = same run clip, faster
