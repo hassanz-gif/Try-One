@@ -1348,7 +1348,9 @@
   // ---------------------------------------------------------------------------
   // Player character model — Golden Sentinel (GLB): menu showcase + 1st/3rd person
   // ---------------------------------------------------------------------------
-  const SENTINEL_URL = 'assets/sentinel.glb';
+  // ?v= busts the browser HTTP cache — bump it whenever the model file changes,
+  // or stale cached GLBs keep playing old (previously mislabeled) animations.
+  const SENTINEL_URL = 'assets/sentinel.glb?v=2';
   const MODEL = { height: 2.5, yawOffset: Math.PI, tpDist: 6.5, tpUp: 1.2 };  // height ≈ player size
   const CLIP = { idle: 'Idle_02', move: 'Running', dead: 'Dead' };  // motion-scanned: Idle_02=calm stand, Running=true run, Idle_03=aim pose (avoid)
   let playerModel = null, playerMixer = null, clips = {}, curClip = null, modelLoaded = false, headBone = null, headBaseScale = null, FOOT_LIFT = 0;
