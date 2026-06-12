@@ -1350,7 +1350,7 @@
   // ---------------------------------------------------------------------------
   const SENTINEL_URL = 'assets/sentinel.glb';
   const MODEL = { height: 2.5, yawOffset: Math.PI, tpDist: 6.5, tpUp: 1.2 };  // height ≈ player size
-  const CLIP = { idle: 'Idle_03', move: 'Running', dead: 'Dead' };  // Walking=crouched aim-strafe (avoid); Running=upright run, speed-scaled below
+  const CLIP = { idle: 'Idle_02', move: 'Running', dead: 'Dead' };  // motion-scanned: Idle_02=calm stand, Running=true run, Idle_03=aim pose (avoid)
   let playerModel = null, playerMixer = null, clips = {}, curClip = null, modelLoaded = false, headBone = null, headBaseScale = null, FOOT_LIFT = 0;
 
   function loadCharacter() {
