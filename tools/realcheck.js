@@ -45,14 +45,14 @@ setImmediate(()=>setImmediate(()=>{
   frame(4);
   // camera must sit ON the ring: radius ≈ R - EYE_H at spawn (bottom)
   const cr = Math.hypot(G.camera.position.x, G.camera.position.y);
-  console.log('camera radius:', cr.toFixed(1), '(expect ~', (98.5-2.3).toFixed(1), ') z=', G.camera.position.z.toFixed(1));
-  ok.cameraOnRing = Math.abs(cr-(98.5-2.3))<1.5;
+  console.log('camera radius:', cr.toFixed(1), '(expect ~', (394-2.3).toFixed(1), ') z=', G.camera.position.z.toFixed(1));
+  ok.cameraOnRing = Math.abs(cr-(394-2.3))<2;
   // walk along the loop: x advances, camera stays at the floor radius
   key('KeyW'); frame(40); up('KeyW');
   const cr2 = Math.hypot(G.camera.position.x, G.camera.position.y);
   console.log('after walk: sim x=', G.player.x.toFixed(1), 'camera radius:', cr2.toFixed(1));
   ok.walkAdvances = Math.abs(G.player.x)>3;
-  ok.staysOnFloor = Math.abs(cr2-(98.5-2.3))<1.5;
+  ok.staysOnFloor = Math.abs(cr2-(394-2.3))<2;
   // jump: radius decreases (toward the axis), then returns
   key('Space'); frame(6);
   const crJump = Math.hypot(G.camera.position.x, G.camera.position.y);
@@ -64,7 +64,7 @@ setImmediate(()=>setImmediate(()=>{
   if(e0){
     const er = Math.hypot(e0.grp.position.x, e0.grp.position.y);
     console.log('enemy world radius:', er.toFixed(1), 'type:', e0.type);
-    ok.enemyOnRing = er > 80 && er < 99.5;
+    ok.enemyOnRing = er > 380 && er < 396;
   } else ok.enemyOnRing = false;
   // kill pipeline: god mode, teleport-turret in SIM coords, fire
   G.state.hp=1e9; G.state.maxHp=1e9;

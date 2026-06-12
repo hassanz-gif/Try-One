@@ -79,7 +79,11 @@
   // world = ((R-h)·cosθ, (R-h)·sinθ, z) with θ = -π/2 + x/R, local up = -radial.
   // This IS the physics of a rotating ring (centripetal frame): constant
   // "gravity" toward the floor everywhere on the loop.
-  const RING = { R: 98.5, W: 96, SCALE: 0.01 };   // floor radius (m), usable width, glb cm→m
+  // Floor radius MUST stay = (glb floor radius ~9850) * SCALE so the player's
+  // feet sit on the road. Scaling R, W, SCALE together by the same factor just
+  // makes the whole station bigger relative to the (fixed-size) player + enemies
+  // — i.e. you become human-scale next to the trees/buildings. (4x).
+  const RING = { R: 394, W: 384, SCALE: 0.04 };
   function ringTheta(s) { return -Math.PI / 2 + s / RING.R; }
   function simToWorld(s, h, z, out) {
     const th = ringTheta(s), r = RING.R - h;
