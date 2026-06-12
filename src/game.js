@@ -513,18 +513,14 @@
   }
   function collectPickup(p) {
     sfx('pickup');
-    if (p.kind === 'ammo') { for (const k of WEAPON_ORDER) ammo[k].reserve = Math.min(ammo[k].reserve + Math.round(WEAPONS[k].magSize * 1.5), WEAPONS[k].reserve * 2); state.inv.ammo++; toast('+AMMO', 0x4ade80); }
-    else if (p.kind === 'health') { state.inv.medkit++; toast('+MEDKIT  (Q to use)', 0xef4444); }   // stored, not auto-used
+    if (p.kind === 'ammo') { for (const k of WEAPON_ORDER) ammo[k].reserve = Math.min(ammo[k].reserve + Math.round(WEAPONS[k].magSize * 1.5), WEAPONS[k].reserve * 2); toast('+AMMO', 0x4ade80); }
+    else if (p.kind === 'health') { addItem('medkit'); toast('+MEDKIT  (Q to use)', 0xef4444); }   // stored, not auto-used
     else if (p.kind === 'grenade') { state.grenades = Math.min(state.maxGrenades, state.grenades + 1); updateWeaponHUD(); toast('+GRENADE', 0xfbbf24); }
     if (state.invOpen) renderInventory();
     scene.remove(p.grp);
     const i = pickups.indexOf(p); if (i >= 0) pickups.splice(i, 1);
   }
-  function useMedkit() {
-    if (state.inv.medkit <= 0 || state.hp >= state.maxHp) return;
-    state.inv.medkit--; state.hp = Math.min(state.maxHp, state.hp + 45); updateHealthHUD(); sfx('pickup'); toast('+45 HP', 0x4ade80);
-    if (state.invOpen) renderInventory();
-  }
+  function useMedkit() { useItem('medkit'); }
 
   // ---------------------------------------------------------------------------
   // Supply caches (loot chests): walk up, press E, loot pours out
@@ -578,11 +574,12 @@
     const rolls = 2 + (Math.random() < 0.35 ? 1 : 0);
     for (let i = 0; i < rolls; i++) {
       const r = Math.random();
-      if (r < 0.25) { WEAPON_ORDER.forEach(k => ammo[k].reserve = Math.min(ammo[k].reserve + Math.round(WEAPONS[k].magSize * 1.5), WEAPONS[k].reserve * 2)); killfeedAdd('CACHE · +AMMO'); }
-      else if (r < 0.45) { state.inv.medkit++; killfeedAdd('CACHE · +MEDKIT'); }
-      else if (r < 0.60) { state.grenades = Math.min(state.maxGrenades, state.grenades + 1); killfeedAdd('CACHE · +GRENADE'); }
-      else if (r < 0.80) { addArmor(25); killfeedAdd('CACHE · +25 ARMOR'); }
-      else { const s = Math.round(rand(10, 25)); state.inv.scrap += s; killfeedAdd('CACHE · +' + s + ' SCRAP'); }
+      if (r < 0.20) { addItem('ammobox'); killfeedAdd('CACHE · +AMMO BOX'); }
+      else if (r < 0.38) { addItem('medkit'); killfeedAdd('CACHE · +MEDKIT'); }
+      else if (r < 0.52) { state.grenades = Math.min(state.maxGrenades, state.grenades + 1); killfeedAdd('CACHE · +GRENADE'); }
+      else if (r < 0.66) { addItem('armorplate'); killfeedAdd('CACHE · +ARMOR PLATE'); }
+      else if (r < 0.82) { const s = Math.round(rand(10, 25)); addItem('scrap', s); killfeedAdd('CACHE · +' + s + ' SCRAP'); }
+      else { const res = RESOURCES[(Math.random() * RESOURCES.length) | 0], n = 1 + (Math.random() * 3 | 0); addItem(res, n); killfeedAdd('CACHE · +' + n + ' ' + ITEMS[res].name.toUpperCase()); }
     }
     toast('SUPPLY CACHE OPENED', 0x22d3ee);
     spawnDebris(c.grp.position.clone().setY(c.grp.position.y + 1), 0x22d3ee, 6, 4);
@@ -599,9 +596,9 @@
     ammo:    { cost: 10, label: 'Ammo refill' },
   };
   function craft(kind) {
-    const c = CRAFTS[kind]; if (!c || state.inv.scrap < c.cost) return false;
-    state.inv.scrap -= c.cost;
-    if (kind === 'medkit') state.inv.medkit++;
+    const c = CRAFTS[kind]; if (!c || itemCount('scrap') < c.cost) return false;
+    state.items.scrap -= c.cost;
+    if (kind === 'medkit') addItem('medkit');
     else if (kind === 'grenade') state.grenades = Math.min(state.maxGrenades, state.grenades + 1);
     else if (kind === 'armor') addArmor(25);
     else WEAPON_ORDER.forEach(k => ammo[k].reserve = Math.min(ammo[k].reserve + WEAPONS[k].magSize, WEAPONS[k].reserve * 2));
@@ -611,7 +608,44 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Inventory (Rust-styled): loadout belt, attachments, picked-up items
+  // Item system — a 64-slot inventory of stackable categories
+  // ---------------------------------------------------------------------------
+  const ITEMS = {
+    medkit:     { name: 'Medkit',      color: '#ef4444', use: true, hint: 'click / Q · +45 HP' },
+    armorplate: { name: 'Armor Plate', color: '#3b82f6', use: true, hint: 'click · +25 armor' },
+    ammobox:    { name: 'Ammo Box',    color: '#4ade80', use: true, hint: 'click · refill ammo' },
+    scrap:      { name: 'Scrap',       color: '#9fb0c4', hint: 'craft material' },
+    alloy:      { name: 'Alloy',       color: '#b08d57', hint: 'material' },
+    cell:       { name: 'Power Cell',  color: '#22d3ee', hint: 'material' },
+    circuit:    { name: 'Circuit',     color: '#34d399', hint: 'material' },
+    core:       { name: 'Data Core',   color: '#a855f7', hint: 'rare material' },
+    optic:      { name: 'Optic Lens',  color: '#60a5fa', hint: 'material' },
+    polymer:    { name: 'Polymer',     color: '#e879f9', hint: 'material' },
+    plate:      { name: 'Steel Plate', color: '#94a3b8', hint: 'material' },
+    fuel:       { name: 'Fuel Rod',    color: '#f59e0b', hint: 'material' },
+  };
+  const ITEM_ORDER = ['medkit', 'armorplate', 'ammobox', 'scrap', 'alloy', 'cell', 'circuit', 'core', 'optic', 'polymer', 'plate', 'fuel'];
+  const RESOURCES = ['alloy', 'cell', 'circuit', 'core', 'optic', 'polymer', 'plate', 'fuel'];
+  const INV_SLOTS = 64;
+  function itemCount(id) { return state.items[id] || 0; }
+  function addItem(id, n = 1) { state.items[id] = itemCount(id) + n; if (state.invOpen) renderInventory(); }
+  function useItem(id) {
+    if (itemCount(id) <= 0) return;
+    if (id === 'medkit') { if (state.hp >= state.maxHp) return; state.hp = Math.min(state.maxHp, state.hp + 45); updateHealthHUD(); toast('+45 HP', 0x4ade80); }
+    else if (id === 'armorplate') { if (state.armor >= state.maxArmor) return; addArmor(25); toast('+25 ARMOR', 0x60a5fa); }
+    else if (id === 'ammobox') { WEAPON_ORDER.forEach(k => ammo[k].reserve = Math.min(ammo[k].reserve + WEAPONS[k].magSize * 2, WEAPONS[k].reserve * 2)); updateWeaponHUD(); toast('AMMO REFILLED', 0x4ade80); }
+    else return;
+    state.items[id]--; sfx('pickup'); if (state.invOpen) renderInventory();
+  }
+  function gridSlots() {
+    const slots = [];
+    if (state.grenades > 0) slots.push({ id: 'grenade', name: 'Grenade', color: '#fbbf24', count: state.grenades, hint: 'G to throw' });
+    for (const id of ITEM_ORDER) { const n = itemCount(id); if (n > 0) slots.push({ id, name: ITEMS[id].name, color: ITEMS[id].color, count: n, hint: ITEMS[id].hint, use: ITEMS[id].use }); }
+    return slots;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inventory (Rust-styled): loadout belt, attachments, 64-slot item grid
   // ---------------------------------------------------------------------------
   function toggleInventory(open) {
     const want = open === undefined ? !state.invOpen : open;
@@ -630,34 +664,36 @@
     if (!ui.inventory) return;
     const W = (k, i) => { const w = WEAPONS[k], a = ammo[k]; return '<div class="wcard' + (k === state.weapon ? ' eq' : '') + '" data-w="' + k + '"><div class="wc-top"><span class="wc-key">' + (i + 1) + '</span><span class="wc-name">' + w.name.split(' · ')[0] + '</span></div><div class="wc-ammo">' + a.mag + ' / ' + a.reserve + '</div><div class="wc-att">' + ATTACH[a.attach].label + '</div></div>'; };
     const cw = WEAPONS[state.weapon], ca = ammo[state.weapon];
-    let h = '<div class="inv-card"><div class="inv-head"><span>INVENTORY</span><span class="inv-x">TAB / ESC to close</span></div><div class="inv-cols">';
+    const slots = gridSlots(), scrap = itemCount('scrap');
+    let grid = '';
+    for (let i = 0; i < INV_SLOTS; i++) {
+      const it = slots[i];
+      grid += it
+        ? '<div class="slot' + (it.use ? ' use' : '') + '" data-use="' + (it.use ? it.id : '') + '" title="' + it.name + (it.hint ? ' — ' + it.hint : '') + '"><span class="slot-ic" style="background:' + it.color + '"></span><span class="slot-n">' + it.name + '</span><span class="slot-x">' + it.count + '</span></div>'
+        : '<div class="slot empty"></div>';
+    }
+    let h = '<div class="inv-card"><div class="inv-head"><span>INVENTORY</span><span class="inv-x">' + slots.length + ' / ' + INV_SLOTS + ' slots · TAB / I / ESC to close</span></div><div class="inv-cols">';
     // operative
     h += '<div class="inv-col"><div class="inv-title">Operative</div><div class="op-name">' + CHARACTERS[state.character].name.toUpperCase() + '</div><div class="op-rank">' + MODES[state.mode].name.toUpperCase() + ' — ' + (state.mode === 'rush' ? fmtTime(state.modeTime) : 'WAVE ' + state.wave) + '</div><div class="op-stats">' +
       '<div><span>Health</span><b>' + Math.max(0, Math.round(state.hp)) + ' / ' + state.maxHp + '</b></div>' +
       '<div><span>Armor</span><b>' + Math.round(state.armor) + ' / ' + state.maxArmor + '</b></div>' +
       '<div><span>Kills</span><b>' + state.kills + '</b></div>' +
       '<div><span>Score</span><b>' + state.score + '</b></div>' +
-      '<div><span>Scrap</span><b>' + state.inv.scrap + '</b></div>' +
-      '<div><span>Grenades</span><b>' + state.grenades + '</b></div></div></div>';
+      '<div><span>Scrap</span><b>' + scrap + '</b></div>' +
+      '<div><span>Grenades</span><b>' + state.grenades + '</b></div></div>' +
+      '<div class="inv-sub">Quick craft — ' + scrap + ' scrap</div><div class="atts">' +
+      Object.keys(CRAFTS).map(k => { const c = CRAFTS[k], can = scrap >= c.cost; return '<div class="att craftbtn' + (can ? '' : ' off') + '" data-craft="' + k + '">' + c.label + ' · ' + c.cost + '</div>'; }).join('') + '</div></div>';
+    // 64-slot item grid
+    h += '<div class="inv-col"><div class="inv-title">Items — carry up to ' + INV_SLOTS + '</div><div class="invgrid">' + grid + '</div></div>';
     // arsenal + attachments
     h += '<div class="inv-col"><div class="inv-title">Arsenal</div><div class="arsenal">' + WEAPON_ORDER.map((k, i) => W(k, i)).join('') + '</div>';
     h += '<div class="inv-sub">Attachments — ' + cw.name.split(' · ')[0] + '</div><div class="atts">' + cw.attachs.map(at => '<div class="att' + (at === ca.attach ? ' on' : '') + '" data-att="' + at + '">' + ATTACH[at].label + '</div>').join('') + '</div></div>';
-    // items
-    h += '<div class="inv-col"><div class="inv-title">Items</div><div class="items">' +
-      '<div class="item' + (state.inv.medkit > 0 ? ' use' : '') + '" data-item="medkit"><div class="it-ic" style="background:#ef4444"></div><div class="it-n">Medkit</div><div class="it-x">x' + state.inv.medkit + '</div><div class="it-h">' + (state.inv.medkit > 0 ? 'click / Q' : '—') + '</div></div>' +
-      '<div class="item" data-item="grenade"><div class="it-ic" style="background:#fbbf24"></div><div class="it-n">Grenade</div><div class="it-x">x' + state.grenades + '</div><div class="it-h">G to throw</div></div>' +
-      '<div class="item"><div class="it-ic" style="background:#4ade80"></div><div class="it-n">Ammo box</div><div class="it-x">x' + state.inv.ammo + '</div><div class="it-h">auto-applied</div></div>' +
-      '<div class="item"><div class="it-ic" style="background:#9fb0c4"></div><div class="it-n">Scrap</div><div class="it-x">x' + state.inv.scrap + '</div><div class="it-h">craft below</div></div>' +
-      '</div>';
-    // quick craft
-    h += '<div class="inv-sub">Quick craft — ' + state.inv.scrap + ' scrap</div><div class="atts">' +
-      Object.keys(CRAFTS).map(k => { const c = CRAFTS[k], can = state.inv.scrap >= c.cost; return '<div class="att craftbtn' + (can ? '' : ' off') + '" data-craft="' + k + '">' + c.label + ' · ' + c.cost + '</div>'; }).join('') + '</div></div>';
     h += '</div></div>';
     ui.inventory.innerHTML = h;
     ui.inventory.querySelectorAll('.wcard').forEach(c => c.addEventListener('click', () => { switchWeapon(c.dataset.w); renderInventory(); }));
     ui.inventory.querySelectorAll('.att:not(.craftbtn)').forEach(c => c.addEventListener('click', () => { setAttachment(c.dataset.att); renderInventory(); }));
     ui.inventory.querySelectorAll('.craftbtn').forEach(c => c.addEventListener('click', () => craft(c.dataset.craft)));
-    ui.inventory.querySelectorAll('.item.use').forEach(c => c.addEventListener('click', () => { if (c.dataset.item === 'medkit') useMedkit(); }));
+    ui.inventory.querySelectorAll('.slot.use').forEach(c => c.addEventListener('click', () => useItem(c.dataset.use)));
   }
 
   // ---------------------------------------------------------------------------
@@ -669,7 +705,7 @@
     weapon: 'smg', recoil: 0, recoilV: 0, fireTimer: 0, firingHeld: false, semiLatch: false,
     reloading: false, reloadTimer: 0, ads: false, adsAmt: 0, bob: 0,
     grenades: 3, maxGrenades: 5, nadeCD: 0, pressure: 0, view: 'first', moving: false, swayX: 0, swayY: 0,
-    inv: { medkit: 1, ammo: 0, scrap: 0 }, invOpen: false, kills: 0,
+    items: { medkit: 1 }, invOpen: false, kills: 0,
     mode: 'survival', character: 'sentinel', paused: false, modeTime: 0, spawned: 0, speedMul: 1,
     armor: 0, maxArmor: 100,
   };
@@ -900,7 +936,7 @@
       for (const m of e.hitMeshes) { const i = enemyHitMeshes.indexOf(m); if (i >= 0) enemyHitMeshes.splice(i, 1); }
       state.score += head ? Math.round(e.score * 1.6) : e.score; state.kills++;
       const scrap = e.boss ? 25 : (Math.random() < 0.3 ? Math.round(rand(2, 6)) : 0);
-      if (scrap) state.inv.scrap += scrap;
+      if (scrap) { addItem('scrap', scrap); if (Math.random() < 0.12) addItem(RESOURCES[(Math.random() * RESOURCES.length) | 0]); }
       sfx('kill'); showHitmarker(true);
       killfeedAdd((head ? '<b>HEADSHOT</b> ' : '') + e.type.toUpperCase() + ' · +' + (head ? Math.round(e.score * 1.6) : e.score) + (scrap ? ' · +' + scrap + ' scrap' : ''));
       spawnDebris(e.grp.position, e.cfg.accent, e.boss ? 24 : 8, 8);
@@ -1030,7 +1066,7 @@
     state.weapon = 'smg'; state.reloading = false; state.fireTimer = 0; state.recoil = 0; state.recoilV = 0;
     state.ads = false; state.adsAmt = 0; state.grenades = 3; state.view = 'first';
     if (ui.viewBtn) ui.viewBtn.innerHTML = '◉ 1ST PERSON <kbd>V</kbd>';
-    state.inv = { medkit: 1, ammo: 0, scrap: 0 }; state.kills = 0; if (state.invOpen) toggleInventory(false);
+    state.items = { medkit: 1 }; state.kills = 0; if (state.invOpen) toggleInventory(false);
     WEAPON_ORDER.forEach(k => { ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] }; viewmodels[k].visible = (k === 'smg'); });
     applyAttachVisual();
     if (curClip) { curClip.stop(); curClip = null; }   // reset character animation state
@@ -1079,6 +1115,7 @@
 
   const MOVE_CODES = new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space']);
   function onKeyDown(e) {
+    if (e._bfHandled) return; e._bfHandled = true;   // keydown is bound to window AND canvas; bubbling fires it twice — dedupe per-event
     keys[e.code] = true;
     if (state.phase === 'playing') {
       if (e.code === 'Escape') { if (state.invOpen) toggleInventory(false); else if (state.paused) resumeGame(); else openPause(); return; }
@@ -1513,5 +1550,5 @@
   window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
   // expose a tiny hook for automated tests (no effect in normal play)
-  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster, get modelLoaded() { return modelLoaded; }, get playerModel() { return playerModel; }, MODES, CHARACTERS, records, settings, chests, craft, tryOpenChest, addArmor, get nearChest() { return nearChest; } };
+  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster, get modelLoaded() { return modelLoaded; }, get playerModel() { return playerModel; }, MODES, CHARACTERS, records, settings, chests, craft, tryOpenChest, addArmor, gridSlots, useItem, addItem, INV_SLOTS, get nearChest() { return nearChest; } };
 })();
