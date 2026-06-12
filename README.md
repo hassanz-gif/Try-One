@@ -43,9 +43,8 @@ persist too, and are also reachable from the pause menu.
 | `W` `A` `S` `D` | Move · `Shift` sprint · `Space` jump |
 | Mouse | Look (click + drag fallback) · `L-click` fire · `R-click` aim |
 | `R` | Reload |
-| `E` | Open a supply cache |
 | `G` | Grenade · `Q` use medkit |
-| `Tab` / `I` | Inventory (weapons, attachments, items, crafting) |
+| `E` | Inventory — press again to close, straight back to gameplay (near a cache: opens the cache). `Tab`/`I` also work |
 | `T` | Cycle attachment |
 | `1`–`5` | SMG · Machine Gun · Shotgun · Sniper · Rocket |
 | `V` | First / third person |

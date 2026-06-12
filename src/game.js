@@ -1120,9 +1120,14 @@
     if (state.phase === 'playing') {
       if (e.code === 'Escape') { if (state.invOpen) toggleInventory(false); else if (state.paused) resumeGame(); else openPause(); return; }
       if (state.paused) { if (MOVE_CODES.has(e.code)) e.preventDefault(); return; }
-      if (e.code === 'Tab' || e.code === 'KeyI') { e.preventDefault(); toggleInventory(); return; }
+      if (e.code === 'Tab' || e.code === 'KeyI' || e.code === 'KeyE') {
+        e.preventDefault();
+        // E next to a supply cache opens the cache; otherwise E toggles the
+        // inventory — closing goes straight back to gameplay (never pause).
+        if (e.code === 'KeyE' && !state.invOpen && nearChest) { tryOpenChest(); return; }
+        toggleInventory(); return;
+      }
       if (e.code === 'KeyR') startReload();
-      else if (e.code === 'KeyE') tryOpenChest();
       else if (e.code === 'KeyG') throwGrenade();
       else if (e.code === 'KeyT') cycleAttachment();
       else if (e.code === 'KeyQ') useMedkit();
