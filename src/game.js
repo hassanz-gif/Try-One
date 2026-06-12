@@ -21,7 +21,7 @@
   const SAVE_KEY = 'bloxforces_v1';
   function loadSaveObj() { try { if (typeof localStorage === 'undefined') return {}; return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; } }
   const _save = loadSaveObj();
-  const settings = Object.assign({ sens: 1, fov: 80, sfx: 1, music: 0.5, invertY: false }, _save.settings);
+  const settings = Object.assign({ sens: 1, fov: 80, sfx: 1, music: 0.5, invertY: false, flipChar: false }, _save.settings);
   const records = Object.assign({ survival: { score: 0, wave: 0 }, horde: { score: 0, wave: 0 }, rush: { time: 0 } }, _save.records);
   function persist() { try { if (typeof localStorage !== 'undefined') localStorage.setItem(SAVE_KEY, JSON.stringify({ settings, records })); } catch (e) {} }
   function fmtTime(s) { const m = Math.floor(s / 60), r = s - m * 60; return m + ':' + (r < 10 ? '0' : '') + r.toFixed(1); }
@@ -1440,10 +1440,9 @@
     if (state.view !== 'third') return;   // FP: camera IS the character
     vis.grp.visible = true;
     vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
-    // VERIFIED via build stamp a3406e8: with yaw+PI his face was to the camera,
-    // so the model's visible face is local -Z (the 'headfront' bone is on the
-    // back of the head). Plain yaw = back to camera. Do not "fix" from bones.
-    vis.grp.rotation.y = yaw;
+    // Which 180° is "forward" is texture-dependent and only the player can see
+    // it — settings.flipChar (Settings menu) decides, persisted. Default yaw+PI.
+    vis.grp.rotation.y = yaw + (settings.flipChar ? 0 : Math.PI);
     if (vis.kind === 'glb') {
       setHead(true);
       if (state.moving) playClip(CLIP.move, 0.18, sprinting ? 1.45 : 0.85);  // jog vs sprint = same run clip, faster
@@ -1527,6 +1526,8 @@
     });
     const inv = el('setInvert');
     if (inv) { inv.checked = !!settings.invertY; inv.addEventListener('change', () => { settings.invertY = inv.checked; persist(); }); }
+    const flip = el('setFlip');
+    if (flip) { flip.checked = !!settings.flipChar; flip.addEventListener('change', () => { settings.flipChar = flip.checked; persist(); }); }
   }
   function wireMenus() {
     const on = (id, fn) => { const n = el(id); if (n) n.addEventListener('click', fn); };
