@@ -54,6 +54,17 @@ setImmediate(()=>setImmediate(()=>{
   up('KeyW'); up('ShiftLeft'); frame(4);
   console.log('idle  -> '+G.curClipName);
   ok.idle = G.curClipName==='Idle_02';
+  // facing: the face (headfront bone) must point the way the player moves/aims
+  {
+    pm.updateMatrixWorld(true);
+    let head=null, front=null; pm.traverse(o=>{ if(o.name==='Head')head=o; if(o.name==='headfront')front=o; });
+    const hp=new THREE.Vector3().setFromMatrixPosition(head.matrixWorld);
+    const fp=new THREE.Vector3().setFromMatrixPosition(front.matrixWorld);
+    const fwd={x:-Math.sin(G.yaw), z:-Math.cos(G.yaw)};
+    const dot=(fp.x-hp.x)*fwd.x+(fp.z-hp.z)*fwd.z;
+    console.log('facing dot(player fwd):', dot.toFixed(3), '(must be > 0)');
+    ok.facesForward = dot>0;
+  }
   ok.noErrors = errors.length===0;
   console.log(JSON.stringify(ok));
   const pass=Object.values(ok).every(Boolean);
