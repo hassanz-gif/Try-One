@@ -83,7 +83,7 @@
   // feet sit on the road. Scaling R, W, SCALE together by the same factor just
   // makes the whole station bigger relative to the (fixed-size) player + enemies
   // — i.e. you become human-scale next to the trees/buildings. (4x).
-  const RING = { R: 394, W: 384, SCALE: 0.04 };
+  const RING = { R: 788, W: 768, SCALE: 0.08 };   // 8x: human-scale next to trees/buildings
   function ringTheta(s) { return -Math.PI / 2 + s / RING.R; }
   function simToWorld(s, h, z, out) {
     const th = ringTheta(s), r = RING.R - h;
@@ -103,7 +103,7 @@
     if (localYaw) { _wq2.setFromAxisAngle(_wv.set(0, 1, 0), localYaw); obj.quaternion.multiply(_wq2); }
   }
   const EYE_H = 2.3, PLAYER_R = 0.6;
-  const WALK = 8.5, SPRINT = 14, GRAVITY = 26, JUMP_V = 9.5;
+  const WALK = 16, SPRINT = 30, GRAVITY = 26, JUMP_V = 12;   // paced for the 8x station — fast and snappy
 
   const obstacles = [];     // {minX,maxX,minZ,maxZ,top,bottom} for movement
   const worldSolids = [];   // meshes that block bullets (terrain + structures)
@@ -269,7 +269,7 @@
               type: 'hitscan', scoped: true, attachs: ['scope','none','extmag'] },
     rocket: { key: '5', name: 'Rocket · BLOXOOKA', auto: false, fireDelay: 1.2, magSize: 3, reserve: 18, ammo: 3,
               damage: 90, headMult: 1, spread: 0.004, reloadTime: 3.2, range: 400, kick: 0.08, adsFov: 0.9,
-              type: 'projectile', splashR: 7, splashDmg: 120, projSpeed: 70, attachs: ['none','scope'] },
+              type: 'projectile', splashR: 9, splashDmg: 120, projSpeed: 130, attachs: ['none','scope'] },
   };
   const WEAPON_ORDER = ['smg', 'lmg', 'shotgun', 'sniper', 'rocket'];
 
@@ -326,7 +326,7 @@
 
   function makeEnemy(typeName, wave) {
     const cfg = ENEMY_TYPES[typeName];
-    const hpMul = 1 + wave * 0.12, spdMul = clamp(1 + wave * 0.03, 1, 1.7), dmgMul = 1 + wave * 0.06;
+    const hpMul = 1 + wave * 0.12, spdMul = 2.5 * clamp(1 + wave * 0.03, 1, 1.7), dmgMul = 1 + wave * 0.06;   // 2.5x base pace for the big ring
     const grp = new T.Group();
     const s = cfg.scale;
     const e = {
@@ -367,8 +367,8 @@
     }
 
     // spawn along the loop near the player (either direction), random lane
-    const sx = player.x + (Math.random() < 0.5 ? -1 : 1) * rand(35, 75);
-    const sz = rand(-RING.W / 2 + 6, RING.W / 2 - 6);
+    const sx = player.x + (Math.random() < 0.5 ? -1 : 1) * rand(90, 180);
+    const sz = clamp(player.z + rand(-90, 90), -RING.W / 2 + 8, RING.W / 2 - 8);
     e.sim = { x: sx, z: sz };
     e.h = e.hoverH;
     placeOnRing(grp, sx, e.h, sz, 0);
@@ -470,8 +470,8 @@
   let chestTimer = 3, nearChest = null;
   function spawnChest() {
     // drop along the loop near the player, random lane
-    const x = player.x + (Math.random() < 0.5 ? -1 : 1) * rand(14, 55);
-    const z = rand(-RING.W / 2 + 8, RING.W / 2 - 8);
+    const x = player.x + (Math.random() < 0.5 ? -1 : 1) * rand(35, 120);
+    const z = clamp(player.z + rand(-70, 70), -RING.W / 2 + 8, RING.W / 2 - 8);
     const grp = new T.Group();
     const base = new T.Mesh(new T.BoxGeometry(1.6, 1.0, 1.1), new T.MeshStandardMaterial({ color: 0x2c3a4d, metalness: 0.6, roughness: 0.35 }));
     base.position.y = 0.5; base.castShadow = true; base.receiveShadow = true; grp.add(base);
@@ -899,7 +899,7 @@
     camera.getWorldDirection(tmpDir); camera.getWorldPosition(tmpOrigin);
     const mesh = new T.Mesh(new T.IcosahedronGeometry(0.22, 0), new T.MeshStandardMaterial({ color: 0x2f7d32, metalness: 0.3, roughness: 0.6, emissive: 0xfbbf24, emissiveIntensity: 0.2 }));
     mesh.position.copy(tmpOrigin).addScaledVector(tmpDir, 0.8); mesh.castShadow = true; scene.add(mesh);
-    const vel = tmpDir.clone().multiplyScalar(24); vel.y += 5;
+    const vel = tmpDir.clone().multiplyScalar(42); vel.y += 8;
     projectiles.push({ mesh, vel, life: 1.6, kind: 'grenade', owner: 'player', splashR: 7, splashDmg: 110, grav: true, bounce: 0.4 });
   }
 
@@ -1191,7 +1191,7 @@
       if (e.ranged) {
         // drone: keep distance, strafe, shoot plasma; lingering drones descend
         let nx = dx / (dist || 1), nz = dz / (dist || 1);
-        const desired = lerp(11, 3.5, state.pressure); const towards = dist > desired ? 1 : (dist < desired - 3 ? -1 : 0);
+        const desired = lerp(26, 7, state.pressure); const towards = dist > desired ? 1 : (dist < desired - 3 ? -1 : 0);
         const sX = -nz, sZ = nx;
         const strafe = lerp(0.45, 0.1, state.pressure);
         let mvx = nx * towards + sX * strafe, mvz = nz * towards + sZ * strafe;
@@ -1205,7 +1205,7 @@
         placeOnRing(e.grp, e.sim.x, e.h, e.sim.z, e.face);
         if (e.ring) e.ring.rotation.z += dt * 3;
         e.shootCD -= dt;
-        if (e.shootCD <= 0 && dist < 60) { e.shootCD = rand(1.4, 2.4); fireEnemyPlasma(e); }
+        if (e.shootCD <= 0 && dist < 140) { e.shootCD = rand(1.4, 2.4); fireEnemyPlasma(e); }
       } else {
         let nx = dx / (dist || 1), nz = dz / (dist || 1);
         for (const o of enemies) { if (o === e || !o.alive) continue; const ox = e.sim.x - o.sim.x, oz = e.sim.z - o.sim.z, od = Math.hypot(ox, oz); if (od < 1.8 * e.cfg.scale && od > 0.01) { nx += ox / od * 0.5; nz += oz / od * 0.5; } }
@@ -1237,7 +1237,7 @@
     const mesh = new T.Mesh(new T.SphereGeometry(0.25, 8, 8), new T.MeshBasicMaterial({ color: e.cfg.accent, fog: false }));
     mesh.position.copy(from); scene.add(mesh);
     const light = new T.PointLight(e.cfg.accent, 1, 5); mesh.add(light);
-    projectiles.push({ mesh, vel: dir.multiplyScalar(38), life: 4, kind: 'plasma', owner: 'enemy', dmg: e.dmg, prev: from.clone() });
+    projectiles.push({ mesh, vel: dir.multiplyScalar(75), life: 4, kind: 'plasma', owner: 'enemy', dmg: e.dmg, prev: from.clone() });
   }
 
   function updateProjectiles(dt) {
