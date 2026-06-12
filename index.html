@@ -5273,7 +5273,7 @@
   // ---------------------------------------------------------------------------
   const SENTINEL_URL = 'assets/sentinel.glb';
   const MODEL = { height: 2.5, yawOffset: Math.PI, tpDist: 6.5, tpUp: 1.2 };  // height ≈ player size
-  const CLIP = { idle: 'Idle_02', walk: 'Walking', run: 'Running', dead: 'Dead' };
+  const CLIP = { idle: 'Idle_03', walk: 'Walking', run: 'Running', dead: 'Dead' };  // Idle_02 slumps (reads as dying); Idle_03 stands
   let playerModel = null, playerMixer = null, clips = {}, curClip = null, modelLoaded = false, headBone = null, headBaseScale = null, FOOT_LIFT = 0;
 
   function loadCharacter() {
@@ -5284,12 +5284,21 @@
         if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
         if (!headBone && o.name && /head/i.test(o.name)) headBone = o;
       });
-      // scale to target height; record how far to lift so the feet sit on the ground
+      // Scale to target height using BONE world extents — the true skinned size.
+      // (Box3.setFromObject is skinning-blind: Meshy's armature carries a 0.01
+      // node scale, so the geometry box reads ~0.02m while the robot is ~1.66m;
+      // scaling by the box blew the model up ~110x. Bones don't lie.)
       m.updateMatrixWorld(true);
-      let box = new T.Box3().setFromObject(m); const size = new T.Vector3(); box.getSize(size);
-      m.scale.setScalar(MODEL.height / (size.y || 1));
-      m.updateMatrixWorld(true);
-      box = new T.Box3().setFromObject(m); FOOT_LIFT = -box.min.y;
+      let minY = 1e9, maxY = -1e9; const bv = new T.Vector3();
+      m.traverse((o) => { if (o.isBone) { bv.setFromMatrixPosition(o.matrixWorld); if (bv.y < minY) minY = bv.y; if (bv.y > maxY) maxY = bv.y; } });
+      let h = maxY - minY;
+      if (!(h > 0.01)) {   // unrigged fallback: geometry box
+        const box = new T.Box3().setFromObject(m); const size = new T.Vector3(); box.getSize(size);
+        h = size.y || 1; minY = box.min.y;
+      }
+      const k = MODEL.height / (h * 1.12);   // 1.12 ≈ head/sole volume beyond end bones
+      m.scale.setScalar(k);
+      FOOT_LIFT = Math.max(0, -minY * k);
       if (headBone) headBaseScale = headBone.scale.clone();
       playerModel = m; m.visible = false; scene.add(m);
       playerMixer = new T.AnimationMixer(m);
