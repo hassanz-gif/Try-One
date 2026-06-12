@@ -1350,7 +1350,7 @@
   // ---------------------------------------------------------------------------
   const SENTINEL_URL = 'assets/sentinel.glb';
   const MODEL = { height: 2.5, yawOffset: Math.PI, tpDist: 6.5, tpUp: 1.2 };  // height ≈ player size
-  const CLIP = { idle: 'Idle_03', walk: 'Walking', run: 'Running', dead: 'Dead' };  // Idle_02 slumps (reads as dying); Idle_03 stands
+  const CLIP = { idle: 'Idle_03', move: 'Running', dead: 'Dead' };  // Walking=crouched aim-strafe (avoid); Running=upright run, speed-scaled below
   let playerModel = null, playerMixer = null, clips = {}, curClip = null, modelLoaded = false, headBone = null, headBaseScale = null, FOOT_LIFT = 0;
 
   function loadCharacter() {
@@ -1385,7 +1385,12 @@
       console.log('[sentinel] loaded — clips:', gltf.animations.map(a => a.name).join(', '));
     }, undefined, (e) => console.warn('[sentinel] load failed — serve over http(s) to see the character; file:// blocks model loads.', e && (e.message || e)));
   }
-  function playClip(name, fade = 0.25) { const a = clips[name]; if (!a || a === curClip) return; a.reset().fadeIn(fade).play(); if (curClip) curClip.fadeOut(fade); curClip = a; }
+  function playClip(name, fade = 0.25, speed = 1) {
+    const a = clips[name]; if (!a) return;
+    if (a === curClip) { a.timeScale = speed; return; }   // already playing: just retune speed (jog<->sprint)
+    a.reset().fadeIn(fade).play(); a.timeScale = speed;
+    if (curClip) curClip.fadeOut(fade); curClip = a;
+  }
   function setHead(show) { if (!headBone || !headBaseScale) return; show ? headBone.scale.copy(headBaseScale) : headBone.scale.set(1e-4, 1e-4, 1e-4); }
   // Procedural blocky characters (alternates to the GLB Sentinel)
   const procChars = {};
@@ -1436,9 +1441,8 @@
     vis.grp.rotation.y = yaw + Math.PI;
     if (vis.kind === 'glb') {
       setHead(true);
-      if (state.moving && sprinting) playClip(CLIP.run);
-      else if (state.moving) playClip(CLIP.walk);
-      else playClip(CLIP.idle);
+      if (state.moving) playClip(CLIP.move, 0.18, sprinting ? 1.45 : 0.85);  // jog vs sprint = same run clip, faster
+      else playClip(CLIP.idle, 0.25, 1);
     } else {
       vis.walkT += dt * (state.moving ? (sprinting ? 12 : 8) : 0);
       const sw = state.moving ? Math.sin(vis.walkT) * 0.5 : 0;
@@ -1555,5 +1559,5 @@
   window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
 
   // expose a tiny hook for automated tests (no effect in normal play)
-  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster, get modelLoaded() { return modelLoaded; }, get playerModel() { return playerModel; }, MODES, CHARACTERS, records, settings, chests, craft, tryOpenChest, addArmor, gridSlots, useItem, addItem, INV_SLOTS, get nearChest() { return nearChest; } };
+  window.__GAME__ = { state, enemies, player, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, get pitch() { return pitch; }, set pitch(v) { pitch = v; }, camera, EYE_H, terrainHeight, WEAPONS, ammo, WEAPON_ORDER, enemyHitMeshes, worldSolids, raycaster, get modelLoaded() { return modelLoaded; }, get playerModel() { return playerModel; }, MODES, CHARACTERS, records, settings, chests, craft, tryOpenChest, addArmor, gridSlots, useItem, addItem, INV_SLOTS, get nearChest() { return nearChest; }, get curClipName() { return curClip ? curClip.getClip().name : null; }, get curClipSpeed() { return curClip ? curClip.timeScale : 0; } };
 })();
