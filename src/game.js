@@ -45,8 +45,8 @@
   app.appendChild(renderer.domElement);
 
   const scene = new T.Scene();
-  scene.background = new T.Color(0x9ec9ef);
-  scene.fog = new T.Fog(0x9ec9ef, 90, 230);
+  scene.background = new T.Color(0x04060c);   // deep space
+  scene.fog = null;                             // vacuum: no atmospheric fog
 
   const camera = new T.PerspectiveCamera(settings.fov, window.innerWidth / window.innerHeight, 0.05, 600);
   scene.add(camera);
@@ -72,7 +72,32 @@
   // ---------------------------------------------------------------------------
   // World constants
   // ---------------------------------------------------------------------------
-  const WORLD = 170, HALF = WORLD / 2;
+  const WORLD = 170, HALF = WORLD / 2;   // (legacy consts; ring bounds below)
+  // ----- Ring station (rotating habitat): gameplay on the INNER surface -----
+  // Sim space stays flat: x = arc-length along the ring, z = along the axis,
+  // y = height above the inner floor. A mapping bends sim space onto the ring:
+  // world = ((R-h)·cosθ, (R-h)·sinθ, z) with θ = -π/2 + x/R, local up = -radial.
+  // This IS the physics of a rotating ring (centripetal frame): constant
+  // "gravity" toward the floor everywhere on the loop.
+  const RING = { R: 98.5, W: 96, SCALE: 0.01 };   // floor radius (m), usable width, glb cm→m
+  function ringTheta(s) { return -Math.PI / 2 + s / RING.R; }
+  function simToWorld(s, h, z, out) {
+    const th = ringTheta(s), r = RING.R - h;
+    out.set(Math.cos(th) * r, Math.sin(th) * r, z);
+    return out;
+  }
+  const _rfM = new T.Matrix4();
+  function ringFrame(s, qOut) {   // quaternion: simX→tangent, simY→local-up, simZ→axis
+    const th = ringTheta(s), st = Math.sin(th), ct = Math.cos(th);
+    _rfM.set(-st, -ct, 0, 0,  ct, -st, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1);
+    return qOut.setFromRotationMatrix(_rfM);
+  }
+  const _wq = new T.Quaternion(), _wq2 = new T.Quaternion(), _wv = new T.Vector3();
+  function placeOnRing(obj, s, h, z, localYaw) {
+    simToWorld(s, h, z, obj.position);
+    ringFrame(s, obj.quaternion);
+    if (localYaw) { _wq2.setFromAxisAngle(_wv.set(0, 1, 0), localYaw); obj.quaternion.multiply(_wq2); }
+  }
   const EYE_H = 2.3, PLAYER_R = 0.6;
   const WALK = 8.5, SPRINT = 14, GRAVITY = 26, JUMP_V = 9.5;
 
@@ -86,130 +111,41 @@
   // ---------------------------------------------------------------------------
   // Heightfield terrain (analytic) + visual mesh
   // ---------------------------------------------------------------------------
-  function terrainHeight(x, z) {
-    let h = 0;
-    h += 2.4 * Math.sin(x * 0.045) * Math.cos(z * 0.041);
-    h += 1.3 * Math.sin(x * 0.09 + 1.3) * Math.sin(z * 0.075);
-    const bump = (cx, cz, amp, sig) => { const dx = x - cx, dz = z - cz; return amp * Math.exp(-(dx*dx + dz*dz) / (2*sig*sig)); };
-    h += bump(-44, -30, 11, 24);
-    h += bump( 48,  36, 10, 26);
-    h += bump( 34, -48, 7, 18);
-    h += bump(-52,  44, 8, 20);
-    // flatten a combat arena near the centre
-    const dC = Math.hypot(x, z);
-    const flat = clamp(1 - dC / 34, 0, 1);
-    h *= (1 - 0.78 * flat);
-    return h;
-  }
-
-  function buildTerrain() {
-    const seg = 110;
-    const geo = new T.PlaneGeometry(WORLD, WORLD, seg, seg);
-    geo.rotateX(-Math.PI / 2);
-    const pos = geo.attributes.position;
-    const colors = [];
-    const cLow = new T.Color(0x5fa345), cMid = new T.Color(0x7d8a5b), cHigh = new T.Color(0x9aa3ad), cSand = new T.Color(0xc9b27e);
-    const tmp = new T.Color();
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), z = pos.getZ(i);
-      const y = terrainHeight(x, z);
-      pos.setY(i, y);
-      // colour by height + a sandy ring near the central arena
-      const dC = Math.hypot(x, z);
-      if (dC < 30 && y < 1.2) tmp.copy(cSand).lerp(cLow, clamp(dC / 30, 0, 1));
-      else if (y > 6) tmp.copy(cMid).lerp(cHigh, clamp((y - 6) / 6, 0, 1));
-      else tmp.copy(cLow).lerp(cMid, clamp(y / 6, 0, 1));
-      colors.push(tmp.r, tmp.g, tmp.b);
-    }
-    geo.setAttribute('color', new T.Float32BufferAttribute(colors, 3));
-    geo.computeVertexNormals();
-    const mesh = new T.Mesh(geo, new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0.0 }));
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-    worldSolids.push(mesh);
-    return mesh;
-  }
+  function terrainHeight(x, z) { return 0; }   // ring floor is flat in sim space
 
   // ---------------------------------------------------------------------------
-  // Structures (placed on the terrain)
+  // Ring station world: the city GLB bent around us + a rotating starfield
   // ---------------------------------------------------------------------------
-  function block(x, y, z, w, h, d, color, opts = {}) {
-    const mat = new T.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.85, metalness: opts.metal ?? 0.0,
-      emissive: opts.emissive ?? 0x000000, emissiveIntensity: opts.emissiveIntensity ?? 1 });
-    const mesh = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = opts.cast ?? true; mesh.receiveShadow = opts.receive ?? true;
-    scene.add(mesh);
-    if (opts.collide ?? true) registerObstacle(x, z, w, d, y + h/2, y - h/2);
-    if (opts.solid ?? true) worldSolids.push(mesh);
-    return mesh;
-  }
-  // place a box sitting ON the terrain at (x,z)
-  function onGround(x, z, w, h, d, color, opts) {
-    const gy = terrainHeight(x, z);
-    return block(x, gy + h/2, z, w, h, d, color, opts);
-  }
-
-  function buildWorld() {
-    // border barrier walls (tall, dark, glowing trim) so you can't leave
-    const wallH = 16, wc = 0x2a2f3a;
-    [[0,-HALF,WORLD,1.5],[0,HALF,WORLD,1.5],[-HALF,0,1.5,WORLD],[HALF,0,1.5,WORLD]].forEach(([x,z,w,d])=>{
-      block(x, wallH/2, z, w, wallH, d, wc, { rough: 0.7, metal: 0.3 });
-      block(x, wallH - 0.3, z, w, 0.4, d, 0x18324a, { emissive: 0x1e88e5, emissiveIntensity: 1.4, collide: false });
-    });
-
-    const STONE = 0x9aa0a6, STONE2 = 0x7b818a, METAL = 0x3b424c, CRYS = 0x22d3ee, ENERGY = 0x7c3aed;
-
-    // Central ruined arena ring: broken pillars around the flat area
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2;
-      const r = 24;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      const hgt = rand(3, 6.5);
-      onGround(x, z, 2, hgt, 2, i % 2 ? STONE : STONE2, { rough: 0.92 });
+  let ringMap = null, starfield = null, mapLoaded = false;
+  function buildRingWorld() {
+    // starfield (slow drift sells the station's rotation)
+    const N = 1600, sp = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      const a = rand(0, Math.PI * 2), b = Math.acos(rand(-1, 1)), r = rand(900, 2600);
+      sp[i*3] = r * Math.sin(b) * Math.cos(a); sp[i*3+1] = r * Math.sin(b) * Math.sin(a); sp[i*3+2] = r * Math.cos(b);
     }
-
-    // A big central landmark: stepped ziggurat you can fight on top of
-    const baseY = terrainHeight(0, 0);
-    block(0, baseY + 1, 0, 16, 2, 16, STONE2, { rough: 0.92 });
-    block(0, baseY + 3, 0, 11, 2, 11, STONE, { rough: 0.92 });
-    block(0, baseY + 5, 0, 6, 2, 6, STONE2, { rough: 0.92 });
-    block(0, baseY + 6.6, 0, 2.2, 1.2, 2.2, METAL, { metal: 0.6, rough: 0.4 });
-    block(0, baseY + 7.6, 0, 1, 1.4, 1, CRYS, { emissive: CRYS, emissiveIntensity: 1.6, rough: 0.2, metal: 0.4 });
-    // ramps/steps up to it (approx with stacked low boxes)
-    for (let s = 0; s < 4; s++) block(0, baseY + 0.5 + s*0.5, 9 - s*1.4, 5, 1, 1.5, STONE, { rough: 0.9 });
-
-    // Scattered sci-fi structures: crashed pods, energy pylons, crate clusters, rocks
-    const spots = [
-      [-40,-18],[42,12],[18,40],[-22,44],[-50,8],[52,-10],[-12,-46],[28,-40],
-      [-58,-40],[60,40],[-60,52],[44,-52],[8,58],[-30,18],[36,28],[-18,-30]
-    ];
-    spots.forEach(([x,z], i) => {
-      const kind = i % 5;
-      if (kind === 0) { // pod
-        onGround(x, z, 4, 3, 4, METAL, { metal: 0.5, rough: 0.4 });
-        onGround(x, z, 2, 3.6, 2, 0x141821, { metal: 0.4, emissive: 0xef4444, emissiveIntensity: 0.6 });
-      } else if (kind === 1) { // pylon
-        onGround(x, z, 1.4, 8, 1.4, METAL, { metal: 0.6, rough: 0.35 });
-        onGround(x, z, 0.6, 9.4, 0.6, ENERGY, { emissive: ENERGY, emissiveIntensity: 1.8, collide: false });
-      } else if (kind === 2) { // crate cluster
-        onGround(x, z, 2.4, 2.4, 2.4, 0x8a6a34, { rough: 0.9 });
-        onGround(x+0.2, z+2.5, 2.2, 2, 2.2, 0x9a7638, { rough: 0.9 });
-        onGround(x+2.6, z, 2, 1.6, 2, 0x8a6a34, { rough: 0.9 });
-      } else if (kind === 3) { // rock spire
-        onGround(x, z, 3, rand(4,7), 3, STONE2, { rough: 0.95 });
-      } else { // crystal cluster (glowing cover)
-        onGround(x, z, 2, 3.4, 2, 0x0b2b33, { rough: 0.5 });
-        onGround(x+0.3, z+0.2, 0.8, 5, 0.8, CRYS, { emissive: CRYS, emissiveIntensity: 1.4, collide: false });
-      }
-    });
-
-    // a couple of low blast walls for cover lines near the arena
-    [[-10,12,12,1.4],[12,-12,1.4,12],[14,14,10,1.4]].forEach(([x,z,w,d])=>onGround(x,z,w,2.6,d,STONE,{rough:0.9}));
+    const sg = new T.BufferGeometry(); sg.setAttribute('position', new T.BufferAttribute(sp, 3));
+    starfield = new T.Points(sg, new T.PointsMaterial({ color: 0xcfe2ff, size: 2.2, sizeAttenuation: false, fog: false }));
+    scene.add(starfield);
+    // a distant "sun" glow + the planet below? keep it minimal: bright point
+    if (typeof THREE.GLTFLoader !== 'function') { console.warn('[ring] GLTFLoader unavailable'); return; }
+    new THREE.GLTFLoader().load('assets/ringcity.glb?v=1', (gltf) => {
+      const m = gltf.scene;
+      m.updateMatrixWorld(true);
+      // center the ring on the origin (axis = Z), scale cm→m
+      const box = new T.Box3().setFromObject(m); const c = new T.Vector3(); box.getCenter(c);
+      const wrap = new T.Group();
+      m.position.sub(c);
+      wrap.add(m);
+      wrap.scale.setScalar(RING.SCALE);
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; o.frustumCulled = true; } });
+      scene.add(wrap);
+      ringMap = wrap; mapLoaded = true;
+      console.log('[ring] city loaded');
+    }, undefined, (e) => console.warn('[ring] map load failed — serve over http(s).', e && (e.message || e)));
   }
 
-  buildTerrain();
-  buildWorld();
+  buildRingWorld();
 
   // ---------------------------------------------------------------------------
   // Collision helpers
@@ -234,8 +170,8 @@
     return h;
   }
   function clampToWorld(p, r) {
-    const lim = HALF - 2 - r;
-    p.x = clamp(p.x, -lim, lim); p.z = clamp(p.z, -lim, lim);
+    const lim = RING.W / 2 - 2 - r;   // axial bounds; the loop itself is endless
+    p.z = clamp(p.z, -lim, lim);
   }
   function tryMove(pos, dx, dz, feetY, r) {
     const cur = maxPenetration(pos.x, pos.z, feetY, r);
@@ -426,13 +362,12 @@
       e.legL = legL; e.legR = legR; e.armL = armL; e.armR = armR; e.torso = torso; e.head = head;
     }
 
-    // spawn at edge ring on the terrain, clear of cover
-    let sx, sz, tries = 0;
-    do {
-      const a = rand(0, Math.PI * 2), r = rand(HALF - 22, HALF - 8);
-      sx = Math.cos(a) * r; sz = Math.sin(a) * r; tries++;
-    } while (maxPenetration(sx, sz, 0, 1.0) > 0 && tries < 25);
-    grp.position.set(sx, terrainHeight(sx, sz) + e.hoverH, sz);
+    // spawn along the loop near the player (either direction), random lane
+    const sx = player.x + (Math.random() < 0.5 ? -1 : 1) * rand(35, 75);
+    const sz = rand(-RING.W / 2 + 6, RING.W / 2 - 6);
+    e.sim = { x: sx, z: sz };
+    e.h = e.hoverH;
+    placeOnRing(grp, sx, e.h, sz, 0);
     scene.add(grp);
     enemies.push(e);
     return e;
@@ -476,14 +411,12 @@
         if (d < radius) { damageEnemy(e, damage * (1 - d / radius) + damage * 0.2, false); }
       }
     } else {
-      const pp = new T.Vector3(player.x, player.feetY + 1, player.z);
-      const d = pp.distanceTo(point);
+      const d = playerWorld(1).distanceTo(point);
       if (d < radius) hurtPlayer(damage * (1 - d / radius));
     }
     // self-splash for player rockets if too close
     if (fromPlayer) {
-      const pp = new T.Vector3(player.x, player.feetY + 1, player.z);
-      const d = pp.distanceTo(point);
+      const d = playerWorld(1).distanceTo(point);
       if (d < radius) hurtPlayer(damage * 0.4 * (1 - d / radius));
     }
   }
@@ -511,9 +444,9 @@
     m.castShadow = true; grp.add(m);
     const light = new T.PointLight(cfg.color, 0.6, 4); light.position.y = 0.5; grp.add(light);
     const x = pos.x + rand(-1, 1) * (i ? 1.5 : 0.3), z = pos.z + rand(-1, 1) * (i ? 1.5 : 0.3);
-    grp.position.set(x, terrainHeight(x, z) + 0.8, z);
+    placeOnRing(grp, x, 0.8, z, 0);
     scene.add(grp);
-    pickups.push({ grp, kind, t: rand(0, 6), life: 25 });
+    pickups.push({ grp, kind, sim: { x, z }, t: rand(0, 6), life: 25 });
   }
   function collectPickup(p) {
     sfx('pickup');
@@ -532,9 +465,9 @@
   const chests = [];
   let chestTimer = 3, nearChest = null;
   function spawnChest() {
-    let x, z, tries = 0;
-    do { const a = rand(0, Math.PI * 2), r = rand(12, 58); x = Math.cos(a) * r; z = Math.sin(a) * r; tries++; }
-    while (maxPenetration(x, z, 0, 1.4) > 0 && tries < 30);
+    // drop along the loop near the player, random lane
+    const x = player.x + (Math.random() < 0.5 ? -1 : 1) * rand(14, 55);
+    const z = rand(-RING.W / 2 + 8, RING.W / 2 - 8);
     const grp = new T.Group();
     const base = new T.Mesh(new T.BoxGeometry(1.6, 1.0, 1.1), new T.MeshStandardMaterial({ color: 0x2c3a4d, metalness: 0.6, roughness: 0.35 }));
     base.position.y = 0.5; base.castShadow = true; base.receiveShadow = true; grp.add(base);
@@ -547,9 +480,9 @@
       new T.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.35, blending: T.AdditiveBlending, depthWrite: false, fog: false, side: T.DoubleSide }));
     beacon.position.y = 5; grp.add(beacon);
     const light = new T.PointLight(0x22d3ee, 0.9, 9); light.position.y = 1.4; grp.add(light);
-    grp.position.set(x, terrainHeight(x, z), z);
+    placeOnRing(grp, x, 0, z, 0);
     scene.add(grp);
-    chests.push({ grp, lid, beacon, light, open: false, openT: 0, t: rand(0, 6) });
+    chests.push({ grp, lid, beacon, light, sim: { x, z }, open: false, openT: 0, t: rand(0, 6) });
   }
   function updateChests(dt) {
     chestTimer -= dt;
@@ -559,7 +492,7 @@
       const c = chests[i]; c.t += dt;
       if (!c.open) {
         c.light.intensity = 0.8 + Math.sin(c.t * 3) * 0.35;
-        const d = Math.hypot(player.x - c.grp.position.x, player.z - c.grp.position.z);
+        const d = Math.hypot(player.x - c.sim.x, player.z - c.sim.z);
         if (d < 3.2 && d < nd) { nd = d; near = c; }
       } else {
         c.openT += dt;
@@ -732,6 +665,8 @@
 
   let yaw = 0, pitch = 0;
   const player = { x: 0, z: 26, feetY: 0, vy: 0, grounded: true };
+  const _pw = new T.Vector3();
+  function playerWorld(hOff) { return simToWorld(player.x, player.feetY + (hOff || 1), player.z, _pw); }
 
   // ---------------------------------------------------------------------------
   // HUD
@@ -742,6 +677,7 @@
    'weaponName','mag','reserve','reloadTag','attachName','grenades','weaponList',
    'hitmarker','hurt','banner','killfeed','toast','scope','help','inventory','invBtn','viewBtn','armorFill','armorNum','prompt'].forEach(id => ui[id] = el(id));
   function setView(v) {
+    if (v === 'third') { toast('Third person is disabled on the ring station (for now)', 0x9fb0c4); return; }
     state.view = v;
     if (ui.viewBtn) ui.viewBtn.innerHTML = (v === 'third' ? '◉ 3RD PERSON' : '◉ 1ST PERSON') + ' <kbd>V</kbd>';
     toast(v === 'third' ? 'Third person' : 'First person', 0x60a5fa);
@@ -1074,8 +1010,8 @@
     WEAPON_ORDER.forEach(k => { ammo[k] = { mag: WEAPONS[k].magSize, reserve: WEAPONS[k].reserve, attach: WEAPONS[k].attachs[0] }; viewmodels[k].visible = (k === 'smg'); });
     applyAttachVisual();
     if (curClip) { curClip.stop(); curClip = null; }   // reset character animation state
-    player.x = 0; player.z = 26; player.feetY = terrainHeight(0, 26); player.vy = 0; player.grounded = true;
-    yaw = Math.PI; pitch = -0.05;
+    player.x = 0; player.z = 0; player.feetY = 0; player.vy = 0; player.grounded = true;   // bottom of the ring
+    yaw = Math.PI / 2; pitch = -0.02;   // look down the loop
     updateHealthHUD(); updateWeaponHUD(); updateTopHUD();
   }
   function startGame() {
@@ -1114,7 +1050,7 @@
   });
   window.addEventListener('mouseup', (e) => { if (e.button === 0) { state.firingHeld = false; dragging = false; } else if (e.button === 2) state.ads = false; });
   if (ui.invBtn) ui.invBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.phase === 'playing' && !state.paused) toggleInventory(); });
-  if (ui.viewBtn) ui.viewBtn.addEventListener('click', (e) => { e.stopPropagation(); if (state.phase === 'playing' && !state.paused) setView(state.view === 'first' ? 'third' : 'first'); });
+  if (ui.viewBtn) ui.viewBtn.style.display = 'none';   // third person disabled on the ring (for now)
   renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
   const MOVE_CODES = new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space']);
@@ -1157,7 +1093,9 @@
   const clock = new T.Clock();
 
   function updatePlayer(dt) {
-    const euler = new T.Euler(pitch + state.recoil, yaw, 0, 'YXZ'); camera.quaternion.setFromEuler(euler);
+    const euler = new T.Euler(pitch + state.recoil, yaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(euler);
+    ringFrame(player.x, _wq); camera.quaternion.premultiply(_wq);   // bend the view onto the ring
     sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) && (keys['KeyW'] || keys['ArrowUp']) && !state.ads;
     const speed = (sprinting ? SPRINT : (state.ads ? WALK * 0.6 : WALK)) * (state.speedMul || 1);
     const fwdX = -Math.sin(yaw), fwdZ = -Math.cos(yaw), rX = -fwdZ, rZ = fwdX;
@@ -1177,13 +1115,7 @@
     state.moving = moving;
     if (moving && player.grounded) state.bob += dt * (sprinting ? 14 : 9);
     const bobY = (moving && player.grounded) ? Math.sin(state.bob) * 0.05 : 0;
-    if (state.view === 'third') {
-      // over-the-shoulder camera placed behind the player (forward is -sin,-cos → behind is +)
-      const hy = player.feetY + EYE_H;
-      camera.position.set(player.x + Math.sin(yaw) * MODEL.tpDist, hy + MODEL.tpUp, player.z + Math.cos(yaw) * MODEL.tpDist);
-    } else {
-      camera.position.set(player.x, player.feetY + EYE_H + bobY, player.z);
-    }
+    simToWorld(player.x, player.feetY + EYE_H + bobY, player.z, camera.position);
 
     state.recoil += state.recoilV; state.recoilV *= 0.82; state.recoil *= 0.80;
 
@@ -1243,42 +1175,45 @@
       const e = enemies[i];
       if (e.flash > 0) { e.flash -= dt; const on = e.flash > 0; for (const m of e.hitMeshes) m.material.emissive && m.material.emissive.setHex(on ? 0xaa2222 : 0x000000); if (e.flash <= 0) for (const m of e.hitMeshes) if (m.material.emissive) m.material.emissive.setHex(0x000000); }
       if (!e.alive) {
-        e.dying -= dt; e.grp.rotation.x += dt * 3; e.grp.position.y -= dt * (e.fly ? 4 : 2.5);
+        // death: shrink + sink into the floor
+        e.dying -= dt; e.h = (e.h || 0) - dt * (e.fly ? 4 : 1.5);
         e.grp.scale.setScalar(Math.max(0.01, e.dying / (e.boss ? 1.2 : 0.6)));
+        placeOnRing(e.grp, e.sim.x, Math.max(e.h, -1.5), e.sim.z, e.face || 0);
         if (e.dying <= 0) removeEnemy(e);
         continue;
       }
-      const dx = player.x - e.grp.position.x, dz = player.z - e.grp.position.z, dist = Math.hypot(dx, dz);
+      const dx = player.x - e.sim.x, dz = player.z - e.sim.z, dist = Math.hypot(dx, dz);
 
       if (e.ranged) {
-        // drone: keep ~14 units, strafe, shoot plasma
+        // drone: keep distance, strafe, shoot plasma; lingering drones descend
         let nx = dx / (dist || 1), nz = dz / (dist || 1);
         const desired = lerp(11, 3.5, state.pressure); const towards = dist > desired ? 1 : (dist < desired - 3 ? -1 : 0);
-        const sX = -nz, sZ = nx; // strafe (less when closing in for the kill)
+        const sX = -nz, sZ = nx;
         const strafe = lerp(0.45, 0.1, state.pressure);
         let mvx = nx * towards + sX * strafe, mvz = nz * towards + sZ * strafe;
         const ml = Math.hypot(mvx, mvz) || 1; mvx /= ml; mvz /= ml;
-        const step = e.speed * dt; const pos = { x: e.grp.position.x, z: e.grp.position.z };
+        const step = e.speed * dt; const pos = { x: e.sim.x, z: e.sim.z };
         tryMove(pos, mvx * step, mvz * step, 99, 0.7); clampToWorld(pos, 1);
-        e.grp.position.x = pos.x; e.grp.position.z = pos.z;
-        // lingering drones descend to player level (cleanup pressure) so they're always finishable
+        e.sim.x = pos.x; e.sim.z = pos.z;
         e.bob += dt * 2; const hov = lerp(e.hoverH, 1.6, state.pressure);
-        e.grp.position.y = terrainHeight(pos.x, pos.z) + hov + Math.sin(e.bob) * 0.4;
-        e.grp.rotation.y = Math.atan2(dx, dz);
+        e.h = hov + Math.sin(e.bob) * 0.4;
+        e.face = Math.atan2(dx, dz);
+        placeOnRing(e.grp, e.sim.x, e.h, e.sim.z, e.face);
         if (e.ring) e.ring.rotation.z += dt * 3;
         e.shootCD -= dt;
         if (e.shootCD <= 0 && dist < 60) { e.shootCD = rand(1.4, 2.4); fireEnemyPlasma(e); }
       } else {
         let nx = dx / (dist || 1), nz = dz / (dist || 1);
-        for (const o of enemies) { if (o === e || !o.alive) continue; const ox = e.grp.position.x - o.grp.position.x, oz = e.grp.position.z - o.grp.position.z, od = Math.hypot(ox, oz); if (od < 1.8 * e.cfg.scale && od > 0.01) { nx += ox / od * 0.5; nz += oz / od * 0.5; } }
+        for (const o of enemies) { if (o === e || !o.alive) continue; const ox = e.sim.x - o.sim.x, oz = e.sim.z - o.sim.z, od = Math.hypot(ox, oz); if (od < 1.8 * e.cfg.scale && od > 0.01) { nx += ox / od * 0.5; nz += oz / od * 0.5; } }
         const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
-        const step = e.speed * dt; const sx = e.grp.position.x, sz = e.grp.position.z; const pos = { x: sx, z: sz };
-        tryMove(pos, nx * step, nz * step, terrainHeight(sx, sz), 0.7 * e.cfg.scale);
-        const moved = Math.hypot(pos.x - sx, pos.z - sz);
-        if (moved < step * 0.6 && dist > 2.4) { if (e.side === undefined) e.side = Math.random() < 0.5 ? 1 : -1; tryMove(pos, -nz * e.side * step, nx * e.side * step, terrainHeight(sx, sz), 0.7 * e.cfg.scale); e.stall = (e.stall || 0) + dt; if (e.stall > 1.5) { e.side *= -1; e.stall = 0; } } else e.stall = 0;
+        const step = e.speed * dt; const sx0 = e.sim.x, sz0 = e.sim.z; const pos = { x: sx0, z: sz0 };
+        tryMove(pos, nx * step, nz * step, 0, 0.7 * e.cfg.scale);
+        const moved = Math.hypot(pos.x - sx0, pos.z - sz0);
+        if (moved < step * 0.6 && dist > 2.4) { if (e.side === undefined) e.side = Math.random() < 0.5 ? 1 : -1; tryMove(pos, -nz * e.side * step, nx * e.side * step, 0, 0.7 * e.cfg.scale); e.stall = (e.stall || 0) + dt; if (e.stall > 1.5) { e.side *= -1; e.stall = 0; } } else e.stall = 0;
         clampToWorld(pos, 1);
-        e.grp.position.set(pos.x, terrainHeight(pos.x, pos.z), pos.z);
-        e.grp.rotation.y = Math.atan2(dx, dz);
+        e.sim.x = pos.x; e.sim.z = pos.z; e.h = 0;
+        e.face = Math.atan2(dx, dz);
+        placeOnRing(e.grp, e.sim.x, 0, e.sim.z, e.face);
         e.walkT += dt * (6 + e.speed); const sw = Math.sin(e.walkT) * 0.5;
         if (e.legL) { e.legL.rotation.x = sw; e.legR.rotation.x = -sw; e.armL.rotation.x = -sw * 0.6; e.armR.rotation.x = sw * 0.6; }
       }
@@ -1293,7 +1228,7 @@
   function fireEnemyPlasma(e) {
     sfx('plasma', 0.6);
     const from = new T.Vector3(e.grp.position.x, e.grp.position.y + 0.3, e.grp.position.z);
-    const to = new T.Vector3(player.x, player.feetY + 1.4, player.z);
+    const to = playerWorld(1.4).clone();
     const dir = to.sub(from).normalize();
     const mesh = new T.Mesh(new T.SphereGeometry(0.25, 8, 8), new T.MeshBasicMaterial({ color: e.cfg.accent, fog: false }));
     mesh.position.copy(from); scene.add(mesh);
@@ -1306,7 +1241,8 @@
       const p = projectiles[i];
       p.life -= dt;
       if (p.prev) p.prev.copy(p.mesh.position);
-      if (p.grav) p.vel.y -= GRAVITY * dt;
+      if (p.grav) { const rr = Math.hypot(p.mesh.position.x, p.mesh.position.y) || 1;
+        p.vel.x += (p.mesh.position.x / rr) * GRAVITY * dt; p.vel.y += (p.mesh.position.y / rr) * GRAVITY * dt; }
       p.mesh.position.addScaledVector(p.vel, dt);
 
       let hit = null, hitPoint = null;
@@ -1319,12 +1255,18 @@
           if (hits.length) { hit = hits[0]; hitPoint = hit.point.clone(); }
         }
         // enemy plasma vs player proximity
-        if (p.owner === 'enemy') { const pp = new T.Vector3(player.x, player.feetY + 1.3, player.z); if (p.mesh.position.distanceTo(pp) < 1.2) { hurtPlayer(p.dmg); scene.remove(p.mesh); projectiles.splice(i, 1); continue; } }
+        if (p.owner === 'enemy') { if (p.mesh.position.distanceTo(playerWorld(1.3)) < 1.2) { hurtPlayer(p.dmg); scene.remove(p.mesh); projectiles.splice(i, 1); continue; } }
       }
 
       if (p.kind === 'grenade') {
-        const gh = terrainHeight(p.mesh.position.x, p.mesh.position.z) + 0.22;
-        if (p.mesh.position.y < gh) { p.mesh.position.y = gh; p.vel.y *= -p.bounce; p.vel.x *= 0.6; p.vel.z *= 0.6; }
+        const rr = Math.hypot(p.mesh.position.x, p.mesh.position.y);
+        if (rr > RING.R - 0.22) {   // hit the inner floor: bounce radially
+          const nx = p.mesh.position.x / rr, ny = p.mesh.position.y / rr;
+          p.mesh.position.x = nx * (RING.R - 0.22); p.mesh.position.y = ny * (RING.R - 0.22);
+          const vr = p.vel.x * nx + p.vel.y * ny;                       // radial speed (down)
+          p.vel.x -= (1 + p.bounce) * vr * nx; p.vel.y -= (1 + p.bounce) * vr * ny;
+          p.vel.multiplyScalar(0.75);
+        }
         p.mesh.rotation.x += dt * 8; p.mesh.rotation.y += dt * 6;
       }
 
@@ -1337,17 +1279,16 @@
   }
 
   function updatePickups(dt) {
-    const pp = new T.Vector3(player.x, player.feetY + 1, player.z);
     for (let i = pickups.length - 1; i >= 0; i--) {
       const p = pickups[i]; p.t += dt; p.life -= dt;
-      p.grp.rotation.y += dt * 2; p.grp.position.y = terrainHeight(p.grp.position.x, p.grp.position.z) + 0.8 + Math.sin(p.t * 2) * 0.15;
-      if (p.grp.position.distanceTo(pp) < 2.2) { collectPickup(p); continue; }
+      placeOnRing(p.grp, p.sim.x, 0.8 + Math.sin(p.t * 2) * 0.15, p.sim.z, p.t * 2);
+      if (Math.hypot(player.x - p.sim.x, player.z - p.sim.z) < 2.2) { collectPickup(p); continue; }
       if (p.life <= 0) { scene.remove(p.grp); pickups.splice(i, 1); }
     }
   }
 
   function updateParticles(dt) {
-    for (let i = particles.length - 1; i >= 0; i--) { const p = particles[i]; p.life -= dt; if (p.grav) p.v.y -= GRAVITY * dt; p.m.position.addScaledVector(p.v, dt); const gy = terrainHeight(p.m.position.x, p.m.position.z) + 0.12; if (p.m.position.y < gy) { p.m.position.y = gy; p.v.y *= -0.4; p.v.x *= 0.6; p.v.z *= 0.6; } p.m.rotation.x += dt * 6; p.m.rotation.y += dt * 5; if (p.life <= 0) { scene.remove(p.m); p.m.geometry.dispose(); particles.splice(i, 1); } }
+    for (let i = particles.length - 1; i >= 0; i--) { const p = particles[i]; p.life -= dt; if (p.grav) { const rr = Math.hypot(p.m.position.x, p.m.position.y) || 1; p.v.x += (p.m.position.x / rr) * GRAVITY * dt; p.v.y += (p.m.position.y / rr) * GRAVITY * dt; } p.m.position.addScaledVector(p.v, dt); { const rr = Math.hypot(p.m.position.x, p.m.position.y); if (rr > RING.R - 0.12) { const nx = p.m.position.x / rr, ny = p.m.position.y / rr; p.m.position.x = nx * (RING.R - 0.12); p.m.position.y = ny * (RING.R - 0.12); const vr = p.v.x * nx + p.v.y * ny; p.v.x -= 1.4 * vr * nx; p.v.y -= 1.4 * vr * ny; p.v.multiplyScalar(0.6); } } p.m.rotation.x += dt * 6; p.m.rotation.y += dt * 5; if (p.life <= 0) { scene.remove(p.m); p.m.geometry.dispose(); particles.splice(i, 1); } }
     for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.life -= dt; if (tr.line.material) tr.line.material.opacity = Math.max(0, tr.life * (tr.grow ? 4 : 16)); if (tr.grow) tr.line.scale.multiplyScalar(1 + dt * 6); if (tr.light) tr.light.intensity = Math.max(0, tr.light.intensity - dt * 16); if (tr.life <= 0) { scene.remove(tr.line); if (tr.light) scene.remove(tr.light); if (tr.line.geometry) tr.line.geometry.dispose(); tracers.splice(i, 1); } }
   }
 
@@ -1437,7 +1378,7 @@
     if (state.phase !== 'playing') {
       // menu showcase: selected character idles + rotates on the podium, lit
       vis.grp.visible = true;
-      vis.grp.position.set(2.6, terrainHeight(2.6, 30.5) + (vis.lift || 0), 30.5);
+      placeOnRing(vis.grp, 6, (vis.lift || 0), 8, vis._spin = (vis._spin || 0) + dt * 0.5);
       vis.grp.rotation.y += dt * 0.5;
       showcaseLight.intensity = 2.4;
       showcaseLight.target.position.copy(vis.grp.position).y += 1.4;
@@ -1448,7 +1389,7 @@
     showcaseLight.intensity = 0;
     if (state.view !== 'third') return;   // FP: camera IS the character
     vis.grp.visible = true;
-    vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
+    placeOnRing(vis.grp, player.x, player.feetY + (vis.lift || 0), player.z, yaw + (settings.flipChar ? 0 : Math.PI));
     // Ground truth from software-rendering the GLB: the FACE is local +Z, so
     // yaw+PI points it along player-forward = back to camera. flipChar removes
     // the PI to show the front instead.
@@ -1470,13 +1411,16 @@
     if (state.phase === 'playing' && !state.paused) {
       updatePlayer(dt); updateFiring(dt); updateWeaponVisual(dt); updateEnemies(dt);
       updateProjectiles(dt); updatePickups(dt); updateParticles(dt); updateWaves(dt); updateCharacter(dt); updateChests(dt);
-      sun.target.position.set(player.x, 0, player.z); sun.position.set(player.x - 60, 90, player.z + 40);
+      { const pw = playerWorld(0); sun.target.position.copy(pw);
+        const rr = Math.hypot(pw.x, pw.y) || 1;
+        sun.position.set(pw.x - (pw.x / rr) * 80 - 30, pw.y - (pw.y / rr) * 80, pw.z + 40); }
       if (hitTimer > 0) { hitTimer -= dt; if (hitTimer <= 0) ui.hitmarker.style.opacity = '0'; }
       if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) ui.toast.style.opacity = '0'; }
       const cmp = el('compass');
       if (cmp) { const deg = ((-yaw * 180 / Math.PI) % 360 + 360) % 360; const dirs = ['N','NE','E','SE','S','SW','W','NW']; cmp.textContent = dirs[Math.round(deg / 45) % 8] + ' · ' + Math.round(deg) + '°'; }
       updateWeaponHUD();
     } else if (state.phase !== 'playing') { updateProjectiles(dt); updateParticles(dt); updateCharacter(dt); }
+    if (starfield) starfield.rotation.z -= dt * 0.0045;   // the ring spins for gravity — stars drift
     renderer.render(scene, camera);   // paused: render the frozen frame
     requestAnimationFrame(tick);
   }
@@ -1489,9 +1433,12 @@
   function showScreen(id) { SCREENS.forEach(s => { const n = el(s); if (n) n.classList.toggle('show', s === id); }); }
   function showMenu(on) { const m = el('menu'); if (m) m.classList.toggle('hidden', !on); }
   function setMenuCamera() {
-    const th = terrainHeight(2.6, 30.5);
-    camera.position.set(6.2, th + 2.7, 34.5);   // frame the character on the right of the menu
-    camera.lookAt(2.6, th + 1.4, 30.5);
+    // stand on the ring floor near the podium, looking along the loop at the character
+    simToWorld(1.2, 2.3, 11.5, camera.position);
+    const look = simToWorld(6, 1.4, 8, _wv.clone());
+    ringFrame(1.2, _wq);
+    camera.up.set(0, 0, 0).copy(_wv.set(0, 1, 0).applyQuaternion(_wq));
+    camera.lookAt(look);
     camera.fov = settings.fov; camera.updateProjectionMatrix();
   }
   function openPause() {
