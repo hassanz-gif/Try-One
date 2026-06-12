@@ -62,10 +62,11 @@ setImmediate(()=>setImmediate(()=>{
     const fp=new THREE.Vector3().setFromMatrixPosition(front.matrixWorld);
     const fwd={x:-Math.sin(G.yaw), z:-Math.cos(G.yaw)};
     const dot=(fp.x-hp.x)*fwd.x+(fp.z-hp.z)*fwd.z;
-    // headfront marks the visible face; it must point along player-forward
-    // (away from the third-person camera) => dot > 0.
-    console.log('facing dot(headfront, player fwd):', dot.toFixed(3), '(must be > 0 = back to camera)');
-    ok.backToCamera = dot>0;
+    // Stamp-verified on build a3406e8: the VISIBLE face is opposite the
+    // headfront bone. Back-to-camera therefore means headfront points AT the
+    // camera => dot < 0. (Trust the screenshot, not the bone label.)
+    console.log('facing dot(headfront, player fwd):', dot.toFixed(3), '(must be < 0 = back to camera)');
+    ok.backToCamera = dot<0;
   }
   ok.noErrors = errors.length===0;
   console.log(JSON.stringify(ok));

@@ -1440,9 +1440,10 @@
     if (state.view !== 'third') return;   // FP: camera IS the character
     vis.grp.visible = true;
     vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
-    // Back to camera = yaw + PI (model's visible face is +Z; player forward is -Z).
-    // Verify which build you're running via the on-screen stamp before judging.
-    vis.grp.rotation.y = yaw + Math.PI;
+    // VERIFIED via build stamp a3406e8: with yaw+PI his face was to the camera,
+    // so the model's visible face is local -Z (the 'headfront' bone is on the
+    // back of the head). Plain yaw = back to camera. Do not "fix" from bones.
+    vis.grp.rotation.y = yaw;
     if (vis.kind === 'glb') {
       setHead(true);
       if (state.moving) playClip(CLIP.move, 0.18, sprinting ? 1.45 : 0.85);  // jog vs sprint = same run clip, faster
