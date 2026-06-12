@@ -722,6 +722,7 @@
     ui.healthNum.textContent = Math.max(0, Math.round(state.hp));
     if (ui.armorFill) ui.armorFill.style.width = clamp(state.armor / state.maxArmor, 0, 1) * 100 + '%';
     if (ui.armorNum) ui.armorNum.textContent = 'Armor ' + Math.round(state.armor);
+    ui.hurt.classList.toggle('lowhp', state.phase === 'playing' && state.hp > 0 && state.hp < state.maxHp * 0.3);
   }
   function addArmor(n) { state.armor = clamp(state.armor + n, 0, state.maxArmor); updateHealthHUD(); }
   function updateTopHUD() {
@@ -1388,6 +1389,8 @@
       sun.target.position.set(player.x, 0, player.z); sun.position.set(player.x - 60, 90, player.z + 40);
       if (hitTimer > 0) { hitTimer -= dt; if (hitTimer <= 0) ui.hitmarker.style.opacity = '0'; }
       if (toastTimer > 0) { toastTimer -= dt; if (toastTimer <= 0) ui.toast.style.opacity = '0'; }
+      const cmp = el('compass');
+      if (cmp) { const deg = ((-yaw * 180 / Math.PI) % 360 + 360) % 360; const dirs = ['N','NE','E','SE','S','SW','W','NW']; cmp.textContent = dirs[Math.round(deg / 45) % 8] + ' · ' + Math.round(deg) + '°'; }
       updateWeaponHUD();
     } else if (state.phase !== 'playing') { updateProjectiles(dt); updateParticles(dt); updateCharacter(dt); }
     renderer.render(scene, camera);   // paused: render the frozen frame

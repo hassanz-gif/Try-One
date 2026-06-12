@@ -66,6 +66,7 @@
   #hud { position:absolute; inset:0; z-index:10; pointer-events:none; display:none; }
   #hud.on { display:block; }
   #topbar { position:absolute; top:14px; left:50%; transform:translateX(-50%); text-align:center; }
+  #compass { font-size:11px; letter-spacing:.3em; color:var(--cyan); margin-bottom:2px; }
   #wave { font-size:13px; letter-spacing:.22em; color:var(--warn); text-transform:uppercase; }
   #score { font-size:26px; font-weight:700; color:#fff; }
   #enemiesLeft { font-size:11px; color:var(--dim); letter-spacing:.12em; }
@@ -83,6 +84,8 @@
   #hitmarker.kill span { background:var(--danger); }
 
   #hurt { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 200px 30px rgba(220,30,30,0); transition:box-shadow .1s; }
+  @keyframes lowhpPulse { 0%,100% { box-shadow:inset 0 0 200px 30px rgba(220,30,30,.12); } 50% { box-shadow:inset 0 0 230px 64px rgba(220,30,30,.42); } }
+  #hurt.lowhp { animation:lowhpPulse 1.5s ease-in-out infinite; }
   #vignette { position:absolute; inset:0; pointer-events:none; box-shadow:inset 0 0 240px 70px rgba(0,0,0,.5); mix-blend-mode:multiply; }
 
   /* Scope overlay */
@@ -186,7 +189,7 @@
 <div id="app"></div>
 
 <div id="hud">
-  <div id="topbar"><div id="wave">WAVE 1</div><div id="score">0</div><div id="enemiesLeft">0 hostiles</div></div>
+  <div id="topbar"><div id="compass">N</div><div id="wave">WAVE 1</div><div id="score">0</div><div id="enemiesLeft">0 hostiles</div></div>
   <button id="invBtn" title="Open inventory">▤ INVENTORY <kbd>I</kbd></button>
   <div id="crosshair"><span class="v"></span><span class="h"></span><span class="dot"></span></div>
   <div id="hitmarker"><span class="v"></span><span class="h"></span></div>
