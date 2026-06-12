@@ -62,18 +62,17 @@ setImmediate(()=>setImmediate(()=>{
     const fp=new THREE.Vector3().setFromMatrixPosition(front.matrixWorld);
     const fwd={x:-Math.sin(G.yaw), z:-Math.cos(G.yaw)};
     const dot=(fp.x-hp.x)*fwd.x+(fp.z-hp.z)*fwd.z;
-    // Verified from gameplay frames: default (flipChar=false, yaw) is BACK to
-    // camera. The 'headfront' bone is actually on the back of this model, so
-    // when his back is to the camera headfront points toward it => dot < 0.
-    console.log('facing default dot:', dot.toFixed(3), '(expect < 0 = back to camera)');
-    ok.facingDefaultBack = dot<0;
+    // Render-verified: face = local +Z (headfront bone agrees). Default yaw+PI
+    // points the face along player-forward (away from camera) => dot > 0.
+    console.log('facing default dot:', dot.toFixed(3), '(expect > 0 = back to camera)');
+    ok.facingDefaultBack = dot>0;
     G.settings.flipChar = true; frame(2);
     pm.updateMatrixWorld(true);
     const fp2=new THREE.Vector3().setFromMatrixPosition(front.matrixWorld);
     const hp2=new THREE.Vector3().setFromMatrixPosition(head.matrixWorld);
     const dot2=(fp2.x-hp2.x)*fwd.x+(fp2.z-hp2.z)*fwd.z;
-    console.log('facing flipped dot:', dot2.toFixed(3), '(expect > 0)');
-    ok.facingToggleFlips = dot2>0;
+    console.log('facing flipped dot:', dot2.toFixed(3), '(expect < 0)');
+    ok.facingToggleFlips = dot2<0;
     G.settings.flipChar = false;
     // F key flips live and persists the setting
     key('KeyF'); frame(2);

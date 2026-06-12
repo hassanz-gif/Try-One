@@ -22,12 +22,12 @@
   function loadSaveObj() { try { if (typeof localStorage === 'undefined') return {}; return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; } }
   const _save = loadSaveObj();
   const settings = Object.assign({ sens: 1, fov: 80, sfx: 1, music: 0.5, invertY: false, flipChar: false }, _save.settings);
-  // One-time facing migration: the third-person default was corrected to "back
-  // to camera" (verified from gameplay frames). Reset any old saved flip so
-  // players aren't double-flipped back to front.
-  if (_save.facingV !== 3) settings.flipChar = false;
+  // One-time facing migration: default = back-to-camera, verified by software-
+  // rendering the GLB itself (face = local +Z: visor, chest, blue shins; back =
+  // local -Z: vents, spine, heel spurs). Reset stale saved flips.
+  if (_save.facingV !== 4) settings.flipChar = false;
   const records = Object.assign({ survival: { score: 0, wave: 0 }, horde: { score: 0, wave: 0 }, rush: { time: 0 } }, _save.records);
-  function persist() { try { if (typeof localStorage !== 'undefined') localStorage.setItem(SAVE_KEY, JSON.stringify({ settings, records, facingV: 3 })); } catch (e) {} }
+  function persist() { try { if (typeof localStorage !== 'undefined') localStorage.setItem(SAVE_KEY, JSON.stringify({ settings, records, facingV: 4 })); } catch (e) {} }
   function fmtTime(s) { const m = Math.floor(s / 60), r = s - m * 60; return m + ':' + (r < 10 ? '0' : '') + r.toFixed(1); }
 
   // ---------------------------------------------------------------------------
@@ -1449,9 +1449,10 @@
     if (state.view !== 'third') return;   // FP: camera IS the character
     vis.grp.visible = true;
     vis.grp.position.set(player.x, player.feetY + (vis.lift || 0), player.z);
-    // Verified from gameplay frames (feet + leg-armor): plain yaw = back to
-    // camera (correct). flipChar adds PI to show the front. Default = correct.
-    vis.grp.rotation.y = yaw + (settings.flipChar ? Math.PI : 0);
+    // Ground truth from software-rendering the GLB: the FACE is local +Z, so
+    // yaw+PI points it along player-forward = back to camera. flipChar removes
+    // the PI to show the front instead.
+    vis.grp.rotation.y = yaw + (settings.flipChar ? 0 : Math.PI);
     if (vis.kind === 'glb') {
       setHead(true);
       if (state.moving) playClip(CLIP.move, 0.18, sprinting ? 1.45 : 0.85);  // jog vs sprint = same run clip, faster
